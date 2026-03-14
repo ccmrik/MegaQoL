@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.4.1";
+        public const string PluginVersion = "1.5.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -80,10 +80,6 @@ namespace MegaQoL
         // Rune Build (bypass no-build zones)
         public static ConfigEntry<bool> EnableRuneBuild;
 
-        // Speed & Jump Adjustment
-        public static ConfigEntry<bool> EnableSpeedAdjustment;
-        public static ConfigEntry<bool> EnableJumpAdjustment;
-
         // MessageHud Smart Queue
         public static ConfigEntry<bool> EnableMessageHudQueue;
 
@@ -95,9 +91,6 @@ namespace MegaQoL
         public static ConfigEntry<int> PlantGridLength;
         public static ConfigEntry<bool> GridIgnoreStamina;
         public static ConfigEntry<bool> GridIgnoreDurability;
-
-        public static float SpeedMultiplier = 1.0f;
-        public static float JumpMultiplier = 1.0f;
 
         // Timers
         private static float _autoRefuelTimer = 0f;
@@ -205,12 +198,6 @@ namespace MegaQoL
             // 10b. Rune Build
             EnableRuneBuild = Config.Bind("10b. Rune Build", "Enable", true,
                 "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
-
-            // 11. Speed & Jump Adjustment
-            EnableSpeedAdjustment = Config.Bind("11. Speed & Jump", "EnableSpeedAdjustment", true,
-                "Enables speed adjustment - use [NUM +] / [NUM -] to increase/decrease movement speed");
-            EnableJumpAdjustment = Config.Bind("11. Speed & Jump", "EnableJumpAdjustment", true,
-                "Enables jump height adjustment - use [CTRL]+[NUM +] / [CTRL]+[NUM -] to increase/decrease jump height");
 
             // 12. MessageHud Smart Queue
             EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
@@ -392,55 +379,11 @@ namespace MegaQoL
                 }
             }
 
-            // Speed and jump adjustment keys
-            if (!IsUIBlockingInput())
-            {
-                bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-
-                if (EnableSpeedAdjustment.Value && !ctrl)
-                {
-                    if (Input.GetKeyDown(KeyCode.KeypadPlus))
-                    {
-                        SpeedMultiplier = Mathf.Round(Mathf.Clamp(SpeedMultiplier + 0.1f, 0.1f, 10.0f) * 10f) / 10f;
-                        player.Message(MessageHud.MessageType.TopLeft, " ");
-                        player.Message(MessageHud.MessageType.TopLeft, $"Speed: {SpeedMultiplier:F1}x");
-                    }
-                    if (Input.GetKeyDown(KeyCode.KeypadMinus))
-                    {
-                        SpeedMultiplier = Mathf.Round(Mathf.Clamp(SpeedMultiplier - 0.1f, 0.1f, 10.0f) * 10f) / 10f;
-                        player.Message(MessageHud.MessageType.TopLeft, " ");
-                        player.Message(MessageHud.MessageType.TopLeft, $"Speed: {SpeedMultiplier:F1}x");
-                    }
-                }
-
-                if (EnableJumpAdjustment.Value && ctrl)
-                {
-                    if (Input.GetKeyDown(KeyCode.KeypadPlus))
-                    {
-                        JumpMultiplier = Mathf.Round(Mathf.Clamp(JumpMultiplier + 0.1f, 0.1f, 10.0f) * 10f) / 10f;
-                        player.Message(MessageHud.MessageType.TopLeft, " ");
-                        player.Message(MessageHud.MessageType.TopLeft, $"Jump Height: {JumpMultiplier:F1}x");
-                    }
-                    if (Input.GetKeyDown(KeyCode.KeypadMinus))
-                    {
-                        JumpMultiplier = Mathf.Round(Mathf.Clamp(JumpMultiplier - 0.1f, 0.1f, 10.0f) * 10f) / 10f;
-                        player.Message(MessageHud.MessageType.TopLeft, " ");
-                        player.Message(MessageHud.MessageType.TopLeft, $"Jump Height: {JumpMultiplier:F1}x");
-                    }
-                }
-
-                if ((EnableSpeedAdjustment.Value || EnableJumpAdjustment.Value) && Input.GetKeyDown(KeyCode.KeypadMultiply))
-                {
-                    SpeedMultiplier = 1.0f;
-                    JumpMultiplier = 1.0f;
-                    player.Message(MessageHud.MessageType.TopLeft, " ");
-                    player.Message(MessageHud.MessageType.TopLeft, "Speed & Jump: 1.0x (reset)");
-                }
-            }
+            // Speed and jump now handled by MegaTrainer
         }
     }
 
-    // ==================== AUTO REPAIR ====================
+    // ==================== AUTO REPAIR ======================================
 
     public static class AutoRepairHelper
     {
@@ -1676,109 +1619,6 @@ namespace MegaQoL
             if (!__result) return;
             if (!MegaQoLPlugin.EnableRuneBuild.Value) return;
             __result = false;
-        }
-    }
-
-    // ==================== SPEED ADJUSTMENT ====================
-
-    [HarmonyPatch(typeof(SEMan), "ApplyStatusEffectSpeedMods")]
-    public static class SEMan_ApplyStatusEffectSpeedMods_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(SEMan __instance, ref float speed, Vector3 dir)
-        {
-            if (!MegaQoLPlugin.EnableSpeedAdjustment.Value) return;
-            if (Mathf.Approximately(MegaQoLPlugin.SpeedMultiplier, 1.0f)) return;
-
-            var characterField = typeof(SEMan).GetField("m_character", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (characterField == null) return;
-
-            var character = characterField.GetValue(__instance) as Character;
-            if (character == null || character != Player.m_localPlayer) return;
-
-            speed *= MegaQoLPlugin.SpeedMultiplier;
-        }
-    }
-
-    [HarmonyPatch(typeof(Character), "UpdateMotion")]
-    public static class Character_UpdateMotion_AccelPatch
-    {
-        private static float _savedAccel;
-        private static float _savedSwimAccel;
-        private static float _savedSwimTurnSpeed;
-        private static float _savedTurnSpeed;
-        private static float _savedRunTurnSpeed;
-        private static bool _applied;
-
-        [HarmonyPrefix]
-        public static void Prefix(Character __instance)
-        {
-            _applied = false;
-            if (!MegaQoLPlugin.EnableSpeedAdjustment.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-            if (Mathf.Approximately(MegaQoLPlugin.SpeedMultiplier, 1.0f)) return;
-
-            float mult = MegaQoLPlugin.SpeedMultiplier;
-            _savedAccel = __instance.m_acceleration;
-            _savedSwimAccel = __instance.m_swimAcceleration;
-            _savedSwimTurnSpeed = __instance.m_swimTurnSpeed;
-            _savedTurnSpeed = __instance.m_turnSpeed;
-            _savedRunTurnSpeed = __instance.m_runTurnSpeed;
-            _applied = true;
-
-            __instance.m_acceleration *= mult;
-            __instance.m_swimAcceleration *= mult;
-            __instance.m_swimTurnSpeed *= mult;
-            __instance.m_turnSpeed *= mult;
-            __instance.m_runTurnSpeed *= mult;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Character __instance)
-        {
-            if (!_applied) return;
-            _applied = false;
-            __instance.m_acceleration = _savedAccel;
-            __instance.m_swimAcceleration = _savedSwimAccel;
-            __instance.m_swimTurnSpeed = _savedSwimTurnSpeed;
-            __instance.m_turnSpeed = _savedTurnSpeed;
-            __instance.m_runTurnSpeed = _savedRunTurnSpeed;
-        }
-    }
-
-    // ==================== JUMP HEIGHT ADJUSTMENT ====================
-
-    [HarmonyPatch(typeof(Character), "Jump", new Type[] { typeof(bool) })]
-    public static class Character_Jump_HeightPatch
-    {
-        private static float _jump_savedJumpForce;
-        private static float _jump_savedJumpForceForward;
-        private static bool _jump_applied;
-
-        [HarmonyPrefix]
-        public static void Prefix(Character __instance)
-        {
-            _jump_applied = false;
-            if (!MegaQoLPlugin.EnableJumpAdjustment.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-            if (Mathf.Approximately(MegaQoLPlugin.JumpMultiplier, 1.0f)) return;
-
-            float mult = MegaQoLPlugin.JumpMultiplier;
-            _jump_savedJumpForce = __instance.m_jumpForce;
-            _jump_savedJumpForceForward = __instance.m_jumpForceForward;
-            _jump_applied = true;
-
-            __instance.m_jumpForce *= mult;
-            __instance.m_jumpForceForward *= mult;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Character __instance)
-        {
-            if (!_jump_applied) return;
-            _jump_applied = false;
-            __instance.m_jumpForce = _jump_savedJumpForce;
-            __instance.m_jumpForceForward = _jump_savedJumpForceForward;
         }
     }
 
