@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.3.0";
+        public const string PluginVersion = "1.3.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -597,6 +597,8 @@ namespace MegaQoL
                 return MegaQoLPlugin.AutoPetFeederUseBlackMetalChests.Value;
             if (name.Contains("barrel"))
                 return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
+            if (name.Contains("incinerator"))
+                return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
             if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
                 !name.Contains("wood") && !name.Contains("blackmetal") && !name.Contains("private"))
                 return MegaQoLPlugin.AutoPetFeederUseReinforcedChests.Value;
@@ -706,6 +708,8 @@ namespace MegaQoL
             if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
                 return MegaQoLPlugin.BallistaAutoReloadUseBlackMetalChests.Value;
             if (name.Contains("barrel"))
+                return MegaQoLPlugin.BallistaAutoReloadUseBarrels.Value;
+            if (name.Contains("incinerator"))
                 return MegaQoLPlugin.BallistaAutoReloadUseBarrels.Value;
             if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
                 !name.Contains("wood") && !name.Contains("blackmetal") && !name.Contains("private"))
@@ -939,7 +943,7 @@ namespace MegaQoL
                 if ((position - container.transform.position).sqrMagnitude > radiusSq) continue;
                 string name = container.gameObject.name.ToLower();
                 if (name.Contains("private")) continue;
-                if (name.Contains("chest") || name.Contains("barrel"))
+                if (name.Contains("chest") || name.Contains("barrel") || name.Contains("incinerator"))
                     result.Add(container);
             }
             return result;
