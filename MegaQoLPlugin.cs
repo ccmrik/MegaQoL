@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.4.0";
+        public const string PluginVersion = "1.4.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -825,6 +825,10 @@ namespace MegaQoL
                 {
                     if (playerItem == null) continue;
                     if (playerItem.m_equipped) continue;
+                    // Skip hotbar (top row, y == 0)
+                    if (playerItem.m_gridPos.y == 0) continue;
+                    // Skip AzuExtendedPlayerInventory equipment slots (rows beyond standard 4-row inventory)
+                    if (playerItem.m_gridPos.y > 3) continue;
                     if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
                     toDeposit.Add(playerItem);
                 }
@@ -914,7 +918,7 @@ namespace MegaQoL
                 return ContainerType.Private;
             if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
                 return ContainerType.BlackMetalChest;
-            if (name.Contains("barrel") || name.Contains("incinerator"))
+            if (name.Contains("barrel") || name.Contains("incinerator") || name.Contains("obliterator"))
                 return ContainerType.Barrel;
             if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
                 !name.Contains("wood") && !name.Contains("blackmetal"))
