@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.1.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -57,6 +57,7 @@ namespace MegaQoL
         public static ConfigEntry<bool> EnableChestAutoPickup;
         public static ConfigEntry<float> ChestAutoPickupRadius;
         public static ConfigEntry<float> ChestAutoPickupInterval;
+        public static ConfigEntry<bool> EnableQuickDeposit;
         public static ConfigEntry<KeyCode> QuickDepositKey;
         public static ConfigEntry<float> QuickDepositRadius;
 
@@ -79,6 +80,9 @@ namespace MegaQoL
         // Speed & Jump Adjustment
         public static ConfigEntry<bool> EnableSpeedAdjustment;
         public static ConfigEntry<bool> EnableJumpAdjustment;
+
+        // MessageHud Smart Queue
+        public static ConfigEntry<bool> EnableMessageHudQueue;
 
         public static float SpeedMultiplier = 1.0f;
         public static float JumpMultiplier = 1.0f;
@@ -157,6 +161,8 @@ namespace MegaQoL
                 new ConfigDescription("Radius around chests to pull in matching ground items", new AcceptableValueRange<float>(1f, 100f)));
             ChestAutoPickupInterval = Config.Bind("5. Item Management", "ChestAutoPickupInterval", 2f,
                 new ConfigDescription("How often chests check for nearby items (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
+            EnableQuickDeposit = Config.Bind("5. Item Management", "EnableQuickDeposit", true,
+                "Enables quick deposit hotkey to deposit matching items into nearby chests");
             QuickDepositKey = Config.Bind("5. Item Management", "QuickDepositKey", KeyCode.Period,
                 "Hotkey to deposit matching items from inventory into nearby chests");
             QuickDepositRadius = Config.Bind("5. Item Management", "QuickDepositRadius", 10f,
@@ -189,6 +195,10 @@ namespace MegaQoL
                 "Enables speed adjustment - use [NUM +] / [NUM -] to increase/decrease movement speed");
             EnableJumpAdjustment = Config.Bind("11. Speed & Jump", "EnableJumpAdjustment", true,
                 "Enables jump height adjustment - use [CTRL]+[NUM +] / [CTRL]+[NUM -] to increase/decrease jump height");
+
+            // 12. MessageHud Smart Queue
+            EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
+                "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
             _config = Config;
             SetupConfigWatcher();
@@ -338,7 +348,7 @@ namespace MegaQoL
             }
 
             // Quick deposit hotkey
-            if (Input.GetKeyDown(QuickDepositKey.Value) && !IsUIBlockingInput())
+            if (EnableQuickDeposit.Value && Input.GetKeyDown(QuickDepositKey.Value) && !IsUIBlockingInput())
             {
                 QuickDepositHelper.DepositMatchingItems(player, QuickDepositRadius.Value);
             }
@@ -1554,6 +1564,7 @@ namespace MegaQoL
         [HarmonyPrefix]
         public static void Prefix(MessageHud __instance, MessageHud.MessageType type)
         {
+            if (!MegaQoLPlugin.EnableMessageHudQueue.Value) return;
             if (type != MessageHud.MessageType.TopLeft) return;
             if (_queueField == null) return;
 
