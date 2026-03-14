@@ -104,3 +104,4 @@ C:\Users\Rik\OneDrive\Valheim Mods\MegaQoL\obj\Release\net462\MegaQoL.csproj.Cor
 C:\Users\Rik\OneDrive\Valheim Mods\MegaQoL\obj\Release\net462\MegaQoL.csproj.Up2Date
 C:\Users\Rik\OneDrive\Valheim Mods\MegaQoL\obj\Release\net462\MegaQoL.dll
 C:\Users\Rik\OneDrive\Valheim Mods\MegaQoL\obj\Release\net462\MegaQoL.pdb
+C:\Users\Rik\OneDrive\Valheim Mods\MegaQoL\obj\Release\net462\MegaQoL.sourcelink.json
