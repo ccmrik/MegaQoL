@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.2.1";
+        public const string PluginVersion = "1.2.2";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -563,11 +563,7 @@ namespace MegaQoL
 
             if (!tameable.IsHungry()) return;
 
-            #pragma warning disable CS0618
-            var containers = UnityEngine.Object.FindObjectsOfType<Container>();
-            #pragma warning restore CS0618
-
-            foreach (var container in containers)
+            foreach (var container in ContainerHelper.AllContainers)
             {
                 if (container == null) continue;
                 float distance = Vector3.Distance(position, container.transform.position);
@@ -658,11 +654,7 @@ namespace MegaQoL
                 validAmmoNames.AddRange(new[] { "TurretBolt", "TurretBoltWood", "TurretBoltFlametal" });
             }
 
-            #pragma warning disable CS0618
-            var containers = UnityEngine.Object.FindObjectsOfType<Container>();
-            #pragma warning restore CS0618
-
-            foreach (var container in containers)
+            foreach (var container in ContainerHelper.AllContainers)
             {
                 if (container == null) continue;
                 float distance = Vector3.Distance(position, container.transform.position);
@@ -872,7 +864,12 @@ namespace MegaQoL
 
     public static class ContainerHelper
     {
+        // Cached container registry — updated by Harmony patches on Container.Awake/OnDestroy
+        public static readonly HashSet<Container> AllContainers = new HashSet<Container>();
+
         private static readonly MethodInfo _loadMethod;
+        private static readonly MethodInfo _getStringHashMethod;
+        private static readonly int _itemsHash;
         private static bool _loggedOnce = false;
 
         static ContainerHelper()
@@ -881,6 +878,9 @@ namespace MegaQoL
             _loadMethod = typeof(Container).GetMethod("Load", flags)
                        ?? typeof(Container).GetMethod("LoadInventory", flags)
                        ?? typeof(Container).GetMethod("ReadInventory", flags);
+
+            _getStringHashMethod = typeof(ZDO).GetMethod("GetString", new[] { typeof(int), typeof(string) });
+            _itemsHash = "items".GetStableHashCode();
         }
 
         public static void EnsureLoaded(Container container, Inventory inventory)
@@ -897,15 +897,7 @@ namespace MegaQoL
                 try
                 {
                     _loadMethod.Invoke(container, null);
-                    if (inventory.GetAllItems().Count > 0)
-                    {
-                        if (!_loggedOnce)
-                        {
-                            MegaQoLPlugin.Log($"[ContainerHelper] Loaded via reflection ({_loadMethod.Name})");
-                            _loggedOnce = true;
-                        }
-                        return;
-                    }
+                    if (inventory.GetAllItems().Count > 0) return;
                 }
                 catch { }
             }
@@ -917,65 +909,62 @@ namespace MegaQoL
                 {
                     ZPackage pkg = new ZPackage(data);
                     inventory.Load(pkg);
-                    if (!_loggedOnce)
-                    {
-                        MegaQoLPlugin.Log($"[ContainerHelper] Loaded via ZDO direct read ({inventory.GetAllItems().Count} items)");
-                        _loggedOnce = true;
-                    }
                     return;
                 }
             }
-            catch (Exception ex)
-            {
-                if (!_loggedOnce)
-                {
-                    MegaQoLPlugin.LogWarning($"[ContainerHelper] ZDO direct read failed: {ex.Message}");
-                    _loggedOnce = true;
-                }
-            }
+            catch { }
 
-            try
+            if (_getStringHashMethod != null)
             {
-                var getStringMethod = typeof(ZDO).GetMethod("GetString", new[] { typeof(int), typeof(string) });
-                if (getStringMethod != null)
+                try
                 {
-                    int itemsHash = "items".GetStableHashCode();
-                    string data = (string)getStringMethod.Invoke(zdo, new object[] { itemsHash, "" });
+                    string data = (string)_getStringHashMethod.Invoke(zdo, new object[] { _itemsHash, "" });
                     if (!string.IsNullOrEmpty(data))
                     {
                         ZPackage pkg = new ZPackage(data);
                         inventory.Load(pkg);
-                        if (!_loggedOnce)
-                        {
-                            MegaQoLPlugin.Log($"[ContainerHelper] Loaded via hash lookup ({inventory.GetAllItems().Count} items)");
-                            _loggedOnce = true;
-                        }
-                        return;
                     }
                 }
+                catch { }
             }
-            catch { }
         }
 
-        /// <summary>
-        /// Find all containers within radius of a position using physics overlap.
-        /// </summary>
         public static List<Container> FindNearbyContainers(Vector3 position, float radius)
         {
             var result = new List<Container>();
-            #pragma warning disable CS0618
-            var allContainers = UnityEngine.Object.FindObjectsOfType<Container>();
-            #pragma warning restore CS0618
-            foreach (var container in allContainers)
+            float radiusSq = radius * radius;
+            foreach (var container in AllContainers)
             {
                 if (container == null) continue;
-                if (Vector3.Distance(position, container.transform.position) > radius) continue;
+                if ((position - container.transform.position).sqrMagnitude > radiusSq) continue;
                 string name = container.gameObject.name.ToLower();
                 if (name.Contains("private")) continue;
                 if (name.Contains("chest") || name.Contains("barrel"))
                     result.Add(container);
             }
             return result;
+        }
+    }
+
+    // ==================== CONTAINER REGISTRY PATCHES ====================
+
+    [HarmonyPatch(typeof(Container), "Awake")]
+    public static class Container_Awake_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Container __instance)
+        {
+            ContainerHelper.AllContainers.Add(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(Container), "OnDestroyed")]
+    public static class Container_OnDestroyed_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Container __instance)
+        {
+            ContainerHelper.AllContainers.Remove(__instance);
         }
     }
 
