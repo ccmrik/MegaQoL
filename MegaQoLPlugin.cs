@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.2.0";
+        public const string PluginVersion = "1.2.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1007,11 +1007,11 @@ namespace MegaQoL
     /// have enough. Also makes the "have resources" check aware of container contents
     /// so recipes show as craftable.
     /// </summary>
-    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Piece.Requirement[]), typeof(bool), typeof(int), typeof(HashSet<string>) })]
+    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) })]
     public static class Player_HaveRequirements_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(Player __instance, Piece.Requirement[] resources, bool discover, int qualityLevel, ref bool __result)
+        public static void Postfix(Player __instance, Recipe recipe, bool discover, int qualityLevel, ref bool __result)
         {
             if (__result) return; // Already have enough
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
@@ -1020,6 +1020,7 @@ namespace MegaQoL
 
             var playerInventory = __instance.GetInventory();
             if (playerInventory == null) return;
+            if (recipe.m_resources == null) return;
 
             var nearbyContainers = ContainerHelper.FindNearbyContainers(
                 __instance.transform.position, MegaQoLPlugin.CraftFromContainersRadius.Value);
@@ -1031,7 +1032,7 @@ namespace MegaQoL
 
             // Check if ALL requirements are met with player + container inventories combined
             bool allMet = true;
-            foreach (var req in resources)
+            foreach (var req in recipe.m_resources)
             {
                 if (req.m_resItem == null) continue;
                 int needed = req.GetAmount(qualityLevel);
@@ -1052,21 +1053,20 @@ namespace MegaQoL
         }
     }
 
-    // Also patch the Recipe-based overload used for crafting station recipes
-    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Recipe), typeof(bool), typeof(int) })]
-    public static class Player_HaveRequirements_Recipe_Patch
+    // Also patch the Piece-based overload used for building
+    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Piece), typeof(Player.RequirementMode) })]
+    public static class Player_HaveRequirements_Piece_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(Player __instance, Recipe recipe, bool discover, int qualityLevel, ref bool __result)
+        public static void Postfix(Player __instance, Piece piece, ref bool __result)
         {
             if (__result) return;
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
             if (__instance != Player.m_localPlayer) return;
-            if (discover) return;
+            if (piece.m_resources == null) return;
 
             var playerInventory = __instance.GetInventory();
             if (playerInventory == null) return;
-            if (recipe.m_resources == null) return;
 
             var nearbyContainers = ContainerHelper.FindNearbyContainers(
                 __instance.transform.position, MegaQoLPlugin.CraftFromContainersRadius.Value);
@@ -1076,10 +1076,10 @@ namespace MegaQoL
                 ContainerHelper.EnsureLoaded(c, c.GetInventory());
 
             bool allMet = true;
-            foreach (var req in recipe.m_resources)
+            foreach (var req in piece.m_resources)
             {
                 if (req.m_resItem == null) continue;
-                int needed = req.GetAmount(qualityLevel);
+                int needed = req.GetAmount(0);
                 if (needed <= 0) continue;
 
                 string itemName = req.m_resItem.m_itemData.m_shared.m_name;
@@ -1105,7 +1105,7 @@ namespace MegaQoL
     public static class Player_ConsumeResources_Patch
     {
         [HarmonyPrefix]
-        public static bool Prefix(Player __instance, Piece.Requirement[] requirements, int qualityLevel, int itemQuality)
+        public static bool Prefix(Player __instance, Piece.Requirement[] requirements, int qualityLevel, int itemQuality, int multiplier)
         {
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return true;
             if (__instance != Player.m_localPlayer) return true;
