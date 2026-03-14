@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.2.2";
+        public const string PluginVersion = "1.2.3";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1052,6 +1052,7 @@ namespace MegaQoL
             if (__result) return;
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
             if (__instance != Player.m_localPlayer) return;
+            if (__instance.InPlaceMode()) return; // Planting/building uses inventory only
             if (piece.m_resources == null) return;
 
             var playerInventory = __instance.GetInventory();
@@ -1098,6 +1099,7 @@ namespace MegaQoL
         {
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return true;
             if (__instance != Player.m_localPlayer) return true;
+            if (__instance.InPlaceMode()) return true; // Planting/building uses inventory only
 
             var playerInventory = __instance.GetInventory();
             if (playerInventory == null) return true;
@@ -1110,6 +1112,8 @@ namespace MegaQoL
 
             foreach (var c in nearbyContainers)
                 ContainerHelper.EnsureLoaded(c, c.GetInventory());
+
+            var affectedContainers = new HashSet<Container>();
 
             foreach (var req in requirements)
             {
@@ -1143,11 +1147,15 @@ namespace MegaQoL
                         {
                             inv.RemoveItem(itemName, fromContainer);
                             needed -= fromContainer;
-                            ChestVFX.Play(container.gameObject);
+                            affectedContainers.Add(container);
                         }
                     }
                 }
             }
+
+            // Play VFX once per affected container
+            foreach (var container in affectedContainers)
+                ChestVFX.Play(container.gameObject);
 
             // We handled all consumption, skip the original method
             return false;
