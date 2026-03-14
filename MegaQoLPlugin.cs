@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.1.1";
+        public const string PluginVersion = "1.2.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -83,6 +83,15 @@ namespace MegaQoL
 
         // MessageHud Smart Queue
         public static ConfigEntry<bool> EnableMessageHudQueue;
+
+        // Mass Farming
+        public static ConfigEntry<bool> EnableMassFarming;
+        public static ConfigEntry<KeyCode> MassFarmingKey;
+        public static ConfigEntry<float> MassHarvestRadius;
+        public static ConfigEntry<int> PlantGridWidth;
+        public static ConfigEntry<int> PlantGridLength;
+        public static ConfigEntry<bool> GridIgnoreStamina;
+        public static ConfigEntry<bool> GridIgnoreDurability;
 
         public static float SpeedMultiplier = 1.0f;
         public static float JumpMultiplier = 1.0f;
@@ -199,6 +208,22 @@ namespace MegaQoL
             // 12. MessageHud Smart Queue
             EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
+
+            // 13. Mass Farming
+            EnableMassFarming = Config.Bind("13. Mass Farming", "Enable", true,
+                "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
+            MassFarmingKey = Config.Bind("13. Mass Farming", "Hotkey", KeyCode.LeftShift,
+                "Hold this key to activate mass farming features");
+            MassHarvestRadius = Config.Bind("13. Mass Farming", "HarvestRadius", 5f,
+                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 50f)));
+            PlantGridWidth = Config.Bind("13. Mass Farming", "PlantGridWidth", 5,
+                new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
+            PlantGridLength = Config.Bind("13. Mass Farming", "PlantGridLength", 5,
+                new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
+            GridIgnoreStamina = Config.Bind("13. Mass Farming", "IgnoreStamina", false,
+                "Ignore stamina cost when grid planting extra plants");
+            GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
+                "Ignore cultivator durability when grid planting");
 
             _config = Config;
             SetupConfigWatcher();
@@ -348,9 +373,16 @@ namespace MegaQoL
             }
 
             // Quick deposit hotkey
-            if (EnableQuickDeposit.Value && Input.GetKeyDown(QuickDepositKey.Value) && !IsUIBlockingInput())
+            if (EnableQuickDeposit.Value && Input.GetKeyDown(QuickDepositKey.Value))
             {
-                QuickDepositHelper.DepositMatchingItems(player, QuickDepositRadius.Value);
+                if (IsUIBlockingInput())
+                {
+                    Log("[QuickDeposit] Key pressed but UI is blocking input");
+                }
+                else
+                {
+                    QuickDepositHelper.DepositMatchingItems(player, QuickDepositRadius.Value);
+                }
             }
 
             // Speed and jump adjustment keys
@@ -729,18 +761,7 @@ namespace MegaQoL
 
         public static void PickupNearbyItems(Vector3 playerPosition, float radius)
         {
-            var nearbyContainers = new List<Container>();
-            var seen = new HashSet<int>();
-            int hitCount = Physics.OverlapSphereNonAlloc(playerPosition, radius, _overlapBuffer);
-            for (int i = 0; i < hitCount; i++)
-            {
-                var container = _overlapBuffer[i].GetComponentInParent<Container>();
-                if (container == null) continue;
-                int id = container.GetInstanceID();
-                if (!seen.Add(id)) continue;
-                if (!IsAnyChest(container)) continue;
-                nearbyContainers.Add(container);
-            }
+            var nearbyContainers = ContainerHelper.FindNearbyContainers(playerPosition, radius);
 
             foreach (var container in nearbyContainers)
             {
@@ -781,39 +802,18 @@ namespace MegaQoL
                 }
             }
         }
-
-        private static bool IsAnyChest(Container container)
-        {
-            string name = container.gameObject.name.ToLower();
-            if (name.Contains("private")) return false;
-            if (name.Contains("chest") || name.Contains("barrel")) return true;
-            return false;
-        }
     }
 
     // ==================== QUICK DEPOSIT ====================
 
     public static class QuickDepositHelper
     {
-        private static readonly Collider[] _overlapBuffer = new Collider[128];
-
         public static void DepositMatchingItems(Player player, float radius)
         {
             var playerInventory = player.GetInventory();
             if (playerInventory == null) return;
 
-            var nearbyContainers = new List<Container>();
-            var seen = new HashSet<int>();
-            int hitCount = Physics.OverlapSphereNonAlloc(player.transform.position, radius, _overlapBuffer);
-            for (int i = 0; i < hitCount; i++)
-            {
-                var container = _overlapBuffer[i].GetComponentInParent<Container>();
-                if (container == null) continue;
-                int id = container.GetInstanceID();
-                if (!seen.Add(id)) continue;
-                if (!IsAnyChest(container)) continue;
-                nearbyContainers.Add(container);
-            }
+            var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
 
             if (nearbyContainers.Count == 0)
             {
@@ -865,14 +865,6 @@ namespace MegaQoL
                 player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
             else
                 player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
-        }
-
-        private static bool IsAnyChest(Container container)
-        {
-            string name = container.gameObject.name.ToLower();
-            if (name.Contains("private")) return false;
-            if (name.Contains("chest") || name.Contains("barrel")) return true;
-            return false;
         }
     }
 
@@ -971,15 +963,13 @@ namespace MegaQoL
         public static List<Container> FindNearbyContainers(Vector3 position, float radius)
         {
             var result = new List<Container>();
-            var seen = new HashSet<int>();
-            var buffer = new Collider[128];
-            int hitCount = Physics.OverlapSphereNonAlloc(position, radius, buffer);
-            for (int i = 0; i < hitCount; i++)
+            #pragma warning disable CS0618
+            var allContainers = UnityEngine.Object.FindObjectsOfType<Container>();
+            #pragma warning restore CS0618
+            foreach (var container in allContainers)
             {
-                var container = buffer[i].GetComponentInParent<Container>();
                 if (container == null) continue;
-                int id = container.GetInstanceID();
-                if (!seen.Add(id)) continue;
+                if (Vector3.Distance(position, container.transform.position) > radius) continue;
                 string name = container.gameObject.name.ToLower();
                 if (name.Contains("private")) continue;
                 if (name.Contains("chest") || name.Contains("barrel"))
@@ -1578,6 +1568,442 @@ namespace MegaQoL
 
             if (_timerField != null)
                 _timerField.SetValue(__instance, 999f);
+        }
+    }
+
+    // ==================== MASS HARVEST ====================
+
+    [HarmonyPatch(typeof(Player), "Interact")]
+    public static class Player_Interact_MassHarvest_Patch
+    {
+        private static readonly FieldInfo _interactMaskField = AccessTools.Field(typeof(Player), "m_interactMask");
+        private static readonly MethodInfo _extractMethod = AccessTools.Method(typeof(Beehive), "Extract");
+
+        [HarmonyPrefix]
+        public static void Prefix(Player __instance, GameObject go, bool hold, bool alt)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            if (__instance != Player.m_localPlayer) return;
+            if (hold || __instance.InAttack() || __instance.InDodge()) return;
+            if (!Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value)) return;
+
+            int interactMask = (int)_interactMaskField.GetValue(__instance);
+
+            var pickable = go.GetComponentInParent<Pickable>();
+            if (pickable != null)
+            {
+                var colliders = Physics.OverlapSphere(go.transform.position,
+                    MegaQoLPlugin.MassHarvestRadius.Value, interactMask);
+                foreach (var col in colliders)
+                {
+                    if (col == null) continue;
+                    var other = col.gameObject.GetComponentInParent<Pickable>();
+                    if (other != null && other != pickable &&
+                        other.m_itemPrefab.name == pickable.m_itemPrefab.name)
+                    {
+                        other.Interact(__instance, false, alt);
+                    }
+                }
+                return;
+            }
+
+            var beehive = go.GetComponentInParent<Beehive>();
+            if (beehive != null && _extractMethod != null)
+            {
+                var colliders = Physics.OverlapSphere(go.transform.position,
+                    MegaQoLPlugin.MassHarvestRadius.Value, interactMask);
+                foreach (var col in colliders)
+                {
+                    if (col == null) continue;
+                    var other = col.gameObject.GetComponentInParent<Beehive>();
+                    if (other != null && other != beehive &&
+                        PrivateArea.CheckAccess(other.transform.position, 0f, true, false))
+                    {
+                        _extractMethod.Invoke(other, null);
+                    }
+                }
+            }
+        }
+    }
+
+    // ==================== MASS PLANT (GRID PLANTING) ====================
+
+    public static class MassPlantHelper
+    {
+        public static readonly FieldInfo PlacementGhostField = AccessTools.Field(typeof(Player), "m_placementGhost");
+        public static readonly FieldInfo BuildPiecesField = AccessTools.Field(typeof(Player), "m_buildPieces");
+        public static readonly FieldInfo NoPlacementCostField = AccessTools.Field(typeof(Player), "m_noPlacementCost");
+        public static readonly MethodInfo GetRightItemMethod = AccessTools.Method(typeof(Humanoid), "GetRightItem");
+        private static readonly int PlantSpaceMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "piece_nonsolid");
+
+        public static GameObject[] Ghosts = new GameObject[1];
+        public static Piece FakeResourcePiece;
+
+        public static bool PlaceSuccessful;
+        public static Vector3 PlacedPosition;
+        public static Quaternion PlacedRotation;
+        public static Piece PlacedPiece;
+        public static int? SavedRotation;
+
+        public static bool IsHotkeyPressed => Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value);
+
+        public static List<Vector3> BuildGridPositions(Vector3 origin, Plant plant, Quaternion rotation)
+        {
+            float spacing = plant.m_growRadius * 2f;
+            int width = MegaQoLPlugin.PlantGridWidth.Value;
+            int length = MegaQoLPlugin.PlantGridLength.Value;
+
+            var positions = new List<Vector3>(width * length);
+            Vector3 left = rotation * Vector3.left * spacing;
+            Vector3 forward = rotation * Vector3.forward * spacing;
+            Vector3 start = origin - forward * (length / 2) - left * (width / 2);
+
+            for (int i = 0; i < length; i++)
+            {
+                Vector3 pos = start;
+                for (int j = 0; j < width; j++)
+                {
+                    pos.y = ZoneSystem.instance.GetGroundHeight(pos);
+                    positions.Add(pos);
+                    pos += left;
+                }
+                start += forward;
+            }
+            return positions;
+        }
+
+        public static bool HasGrowSpace(Vector3 pos, GameObject go)
+        {
+            var plant = go.GetComponent<Plant>();
+            if (plant != null)
+                return Physics.OverlapSphere(pos, plant.m_growRadius, PlantSpaceMask).Length == 0;
+            return true;
+        }
+
+        public static void DestroyGhosts()
+        {
+            for (int i = 0; i < Ghosts.Length; i++)
+            {
+                if (Ghosts[i] != null)
+                {
+                    UnityEngine.Object.Destroy(Ghosts[i]);
+                    Ghosts[i] = null;
+                }
+            }
+            FakeResourcePiece = null;
+        }
+
+        public static void SetGhostsActive(bool active)
+        {
+            foreach (var g in Ghosts)
+                if (g != null) g.SetActive(active);
+        }
+
+        public static bool EnsureGhosts(Player player)
+        {
+            int count = MegaQoLPlugin.PlantGridWidth.Value * MegaQoLPlugin.PlantGridLength.Value;
+            if (Ghosts[0] == null || Ghosts.Length != count)
+            {
+                DestroyGhosts();
+                if (Ghosts.Length != count)
+                    Ghosts = new GameObject[count];
+
+                var buildPieces = BuildPiecesField.GetValue(player) as PieceTable;
+                if (buildPieces == null) return false;
+
+                var prefab = buildPieces.GetSelectedPrefab();
+                if (prefab == null) return false;
+                if (prefab.GetComponent<Piece>().m_repairPiece) return false;
+
+                for (int i = 0; i < Ghosts.Length; i++)
+                    Ghosts[i] = CreateGhost(prefab);
+            }
+
+            if (FakeResourcePiece == null)
+            {
+                FakeResourcePiece = Ghosts[0].GetComponent<Piece>();
+                FakeResourcePiece.m_dlc = string.Empty;
+                FakeResourcePiece.m_resources = new Piece.Requirement[1] { new Piece.Requirement() };
+            }
+            return true;
+        }
+
+        public static GameObject CreateGhost(GameObject prefab)
+        {
+            ZNetView.m_forceDisableInit = true;
+            var ghost = UnityEngine.Object.Instantiate(prefab);
+            ZNetView.m_forceDisableInit = false;
+            ghost.name = prefab.name;
+
+            foreach (var joint in ghost.GetComponentsInChildren<Joint>())
+                UnityEngine.Object.Destroy(joint);
+            foreach (var rb in ghost.GetComponentsInChildren<Rigidbody>())
+                UnityEngine.Object.Destroy(rb);
+
+            int layer = LayerMask.NameToLayer("ghost");
+            foreach (var t in ghost.GetComponentsInChildren<Transform>())
+                t.gameObject.layer = layer;
+
+            foreach (var tm in ghost.GetComponentsInChildren<TerrainModifier>())
+                UnityEngine.Object.Destroy(tm);
+            foreach (var gp in ghost.GetComponentsInChildren<GuidePoint>())
+                UnityEngine.Object.Destroy(gp);
+            foreach (var light in ghost.GetComponentsInChildren<Light>())
+                UnityEngine.Object.Destroy(light);
+
+            var ghostOnly = ghost.transform.Find("_GhostOnly");
+            if (ghostOnly != null)
+                ghostOnly.gameObject.SetActive(true);
+
+            foreach (var renderer in ghost.GetComponentsInChildren<MeshRenderer>())
+            {
+                if (renderer.sharedMaterial == null) continue;
+                var mats = renderer.sharedMaterials;
+                for (int m = 0; m < mats.Length; m++)
+                {
+                    mats[m] = new Material(mats[m]);
+                    mats[m].SetFloat("_RippleDistance", 0f);
+                    mats[m].SetFloat("_ValueNoise", 0f);
+                }
+                renderer.sharedMaterials = mats;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
+            return ghost;
+        }
+
+        /// <summary>
+        /// Finds the HaveRequirements(Piece, RequirementMode) overload via reflection
+        /// to avoid enum type name issues across Valheim versions.
+        /// </summary>
+        private static MethodInfo _haveReqPieceMethod;
+        private static bool _haveReqSearched;
+
+        public static bool PlayerHaveRequirements(Player player, Piece piece)
+        {
+            if (!_haveReqSearched)
+            {
+                _haveReqSearched = true;
+                foreach (var m in typeof(Player).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (m.Name != "HaveRequirements") continue;
+                    var ps = m.GetParameters();
+                    if (ps.Length == 2 && ps[0].ParameterType == typeof(Piece))
+                    {
+                        _haveReqPieceMethod = m;
+                        break;
+                    }
+                }
+            }
+            if (_haveReqPieceMethod != null)
+            {
+                var reqModeType = _haveReqPieceMethod.GetParameters()[1].ParameterType;
+                var zeroVal = Enum.ToObject(reqModeType, 0); // 0 = CanBuild
+                return (bool)_haveReqPieceMethod.Invoke(player, new object[] { piece, zeroVal });
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "TryPlacePiece")]
+    public static class MassPlant_TryPlacePiece_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            if (MassPlantHelper.IsHotkeyPressed && !MassPlantHelper.SavedRotation.HasValue)
+                MassPlantHelper.SavedRotation = ___m_placeRotation;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(Player __instance, ref bool __result, Piece piece, ref int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            MassPlantHelper.PlaceSuccessful = __result;
+            if (__result)
+            {
+                var ghost = MassPlantHelper.PlacementGhostField.GetValue(__instance) as GameObject;
+                if (ghost != null)
+                {
+                    MassPlantHelper.PlacedPosition = ghost.transform.position;
+                    MassPlantHelper.PlacedRotation = ghost.transform.rotation;
+                }
+                MassPlantHelper.PlacedPiece = piece;
+            }
+            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
+                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "UpdatePlacement")]
+    public static class MassPlant_UpdatePlacement_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(ref int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            MassPlantHelper.PlaceSuccessful = false;
+            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
+                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(Player __instance, int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            if (MassPlantHelper.IsHotkeyPressed)
+                MassPlantHelper.SavedRotation = ___m_placeRotation;
+
+            if (!MassPlantHelper.PlaceSuccessful) return;
+
+            var plant = MassPlantHelper.PlacedPiece?.gameObject.GetComponent<Plant>();
+            if (plant == null || !MassPlantHelper.IsHotkeyPressed) return;
+
+            var heightmap = Heightmap.FindHeightmap(MassPlantHelper.PlacedPosition);
+            if (heightmap == null) return;
+
+            var positions = MassPlantHelper.BuildGridPositions(
+                MassPlantHelper.PlacedPosition, plant, MassPlantHelper.PlacedRotation);
+
+            foreach (var pos in positions)
+            {
+                if (pos == MassPlantHelper.PlacedPosition) continue;
+                if (MassPlantHelper.PlacedPiece.m_cultivatedGroundOnly && !heightmap.IsCultivated(pos)) continue;
+
+                var rightItem = MassPlantHelper.GetRightItemMethod.Invoke(__instance, null) as ItemDrop.ItemData;
+                if (rightItem == null) continue;
+
+                if (!MegaQoLPlugin.GridIgnoreStamina.Value && !__instance.HaveStamina(rightItem.m_shared.m_attack.m_attackStamina))
+                {
+                    Hud.instance.StaminaBarUppgradeFlash();
+                    break;
+                }
+
+                bool noCost = (bool)MassPlantHelper.NoPlacementCostField.GetValue(__instance);
+                if (!noCost && !MassPlantHelper.PlayerHaveRequirements(__instance, MassPlantHelper.PlacedPiece))
+                    break;
+
+                if (!MassPlantHelper.HasGrowSpace(pos, MassPlantHelper.PlacedPiece.gameObject)) continue;
+
+                var obj = UnityEngine.Object.Instantiate(MassPlantHelper.PlacedPiece.gameObject, pos, MassPlantHelper.PlacedRotation);
+                var piece = obj.GetComponent<Piece>();
+                if (piece != null) piece.SetCreator(__instance.GetPlayerID());
+
+                MassPlantHelper.PlacedPiece.m_placeEffect.Create(pos, MassPlantHelper.PlacedRotation, obj.transform, 1f, -1);
+                Game.instance.IncrementPlayerStat((PlayerStatType)2, 1f);
+                __instance.ConsumeResources(MassPlantHelper.PlacedPiece.m_resources, 0, -1);
+
+                if (!MegaQoLPlugin.GridIgnoreStamina.Value)
+                    __instance.UseStamina(rightItem.m_shared.m_attack.m_attackStamina);
+
+                if (!MegaQoLPlugin.GridIgnoreDurability.Value && rightItem.m_shared.m_useDurability)
+                {
+                    rightItem.m_durability -= rightItem.m_shared.m_useDurabilityDrain;
+                    if (rightItem.m_durability <= 0f) break;
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "SetupPlacementGhost")]
+    public static class MassPlant_SetupPlacementGhost_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            if (MassPlantHelper.IsHotkeyPressed && !MassPlantHelper.SavedRotation.HasValue)
+                MassPlantHelper.SavedRotation = ___m_placeRotation;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(ref int ___m_placeRotation)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
+                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
+            MassPlantHelper.DestroyGhosts();
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), "UpdatePlacementGhost")]
+    public static class MassPlant_UpdatePlacementGhost_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Player __instance)
+        {
+            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
+
+            var mainGhost = MassPlantHelper.PlacementGhostField.GetValue(__instance) as GameObject;
+            if (mainGhost == null || !mainGhost.activeSelf || !MassPlantHelper.IsHotkeyPressed)
+            {
+                MassPlantHelper.SetGhostsActive(false);
+                return;
+            }
+
+            var plant = mainGhost.GetComponent<Plant>();
+            if (plant == null)
+            {
+                MassPlantHelper.SetGhostsActive(false);
+                return;
+            }
+
+            if (!MassPlantHelper.EnsureGhosts(__instance))
+            {
+                MassPlantHelper.SetGhostsActive(false);
+                return;
+            }
+
+            // Find the primary resource requirement
+            Piece.Requirement primaryReq = null;
+            foreach (var r in mainGhost.GetComponent<Piece>().m_resources)
+            {
+                if (r.m_resItem != null && r.m_amount > 0) { primaryReq = r; break; }
+            }
+            if (primaryReq == null) return;
+
+            MassPlantHelper.FakeResourcePiece.m_resources[0].m_resItem = primaryReq.m_resItem;
+            MassPlantHelper.FakeResourcePiece.m_resources[0].m_amount = primaryReq.m_amount;
+
+            float stamina = __instance.GetStamina();
+            var rightItem = MassPlantHelper.GetRightItemMethod.Invoke(__instance, null) as ItemDrop.ItemData;
+            if (rightItem == null) return;
+
+            var heightmap = Heightmap.FindHeightmap(mainGhost.transform.position);
+            var positions = MassPlantHelper.BuildGridPositions(mainGhost.transform.position, plant, mainGhost.transform.rotation);
+
+            for (int i = 0; i < MassPlantHelper.Ghosts.Length && i < positions.Count; i++)
+            {
+                Vector3 pos = positions[i];
+
+                if (mainGhost.transform.position == pos)
+                {
+                    MassPlantHelper.Ghosts[i].SetActive(false);
+                    continue;
+                }
+
+                MassPlantHelper.FakeResourcePiece.m_resources[0].m_amount += primaryReq.m_amount;
+                MassPlantHelper.Ghosts[i].transform.position = pos;
+                MassPlantHelper.Ghosts[i].transform.rotation = mainGhost.transform.rotation;
+                MassPlantHelper.Ghosts[i].SetActive(true);
+
+                bool invalid = false;
+                if (mainGhost.GetComponent<Piece>().m_cultivatedGroundOnly && heightmap != null && !heightmap.IsCultivated(pos))
+                    invalid = true;
+                else if (!MassPlantHelper.HasGrowSpace(pos, mainGhost))
+                    invalid = true;
+                else if (!MegaQoLPlugin.GridIgnoreStamina.Value && stamina < rightItem.m_shared.m_attack.m_attackStamina)
+                    invalid = true;
+                else
+                {
+                    bool noCost = (bool)MassPlantHelper.NoPlacementCostField.GetValue(__instance);
+                    if (!noCost && !MassPlantHelper.PlayerHaveRequirements(__instance, MassPlantHelper.FakeResourcePiece))
+                        invalid = true;
+                }
+
+                stamina -= rightItem.m_shared.m_attack.m_attackStamina;
+                MassPlantHelper.Ghosts[i].GetComponent<Piece>().SetInvalidPlacementHeightlight(invalid);
+            }
         }
     }
 }
