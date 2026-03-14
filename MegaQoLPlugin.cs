@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.3.1";
+        public const string PluginVersion = "1.4.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -592,21 +592,15 @@ namespace MegaQoL
 
         private static bool IsAllowedContainer(Container container)
         {
-            string name = container.gameObject.name.ToLower();
-            if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
-                return MegaQoLPlugin.AutoPetFeederUseBlackMetalChests.Value;
-            if (name.Contains("barrel"))
-                return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
-            if (name.Contains("incinerator"))
-                return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
-            if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
-                !name.Contains("wood") && !name.Contains("blackmetal") && !name.Contains("private"))
-                return MegaQoLPlugin.AutoPetFeederUseReinforcedChests.Value;
-            if (name.Contains("piece_chest_wood") || name.StartsWith("chest(") || (name.Contains("chest") && name.Contains("wood")))
-                return MegaQoLPlugin.AutoPetFeederUseChests.Value;
-            if (name.Contains("private"))
-                return false;
-            return false;
+            var type = ContainerHelper.GetContainerType(container);
+            switch (type)
+            {
+                case ContainerType.BlackMetalChest: return MegaQoLPlugin.AutoPetFeederUseBlackMetalChests.Value;
+                case ContainerType.Barrel: return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
+                case ContainerType.ReinforcedChest: return MegaQoLPlugin.AutoPetFeederUseReinforcedChests.Value;
+                case ContainerType.WoodChest: return MegaQoLPlugin.AutoPetFeederUseChests.Value;
+                default: return false;
+            }
         }
     }
 
@@ -704,21 +698,15 @@ namespace MegaQoL
 
         private static bool IsAllowedContainer(Container container)
         {
-            string name = container.gameObject.name.ToLower();
-            if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
-                return MegaQoLPlugin.BallistaAutoReloadUseBlackMetalChests.Value;
-            if (name.Contains("barrel"))
-                return MegaQoLPlugin.BallistaAutoReloadUseBarrels.Value;
-            if (name.Contains("incinerator"))
-                return MegaQoLPlugin.BallistaAutoReloadUseBarrels.Value;
-            if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
-                !name.Contains("wood") && !name.Contains("blackmetal") && !name.Contains("private"))
-                return MegaQoLPlugin.BallistaAutoReloadUseReinforcedChests.Value;
-            if (name.Contains("piece_chest_wood") || name.StartsWith("chest(") || (name.Contains("chest") && name.Contains("wood")))
-                return MegaQoLPlugin.BallistaAutoReloadUseChests.Value;
-            if (name.Contains("private"))
-                return false;
-            return false;
+            var type = ContainerHelper.GetContainerType(container);
+            switch (type)
+            {
+                case ContainerType.BlackMetalChest: return MegaQoLPlugin.BallistaAutoReloadUseBlackMetalChests.Value;
+                case ContainerType.Barrel: return MegaQoLPlugin.BallistaAutoReloadUseBarrels.Value;
+                case ContainerType.ReinforcedChest: return MegaQoLPlugin.BallistaAutoReloadUseReinforcedChests.Value;
+                case ContainerType.WoodChest: return MegaQoLPlugin.BallistaAutoReloadUseChests.Value;
+                default: return false;
+            }
         }
     }
 
@@ -864,17 +852,49 @@ namespace MegaQoL
         }
     }
 
+    // ==================== CONTAINER TYPE ====================
+
+    public enum ContainerType
+    {
+        Unknown,
+        WoodChest,
+        ReinforcedChest,
+        BlackMetalChest,
+        Barrel,
+        Private
+    }
+
     // ==================== CONTAINER HELPER ====================
 
     public static class ContainerHelper
     {
-        // Cached container registry — updated by Harmony patches on Container.Awake/OnDestroy
         public static readonly HashSet<Container> AllContainers = new HashSet<Container>();
 
+        // Type cache — classified once at registration, no repeated string ops
+        private static readonly Dictionary<Container, ContainerType> _typeCache = new Dictionary<Container, ContainerType>();
+
+        // Nearby container cache — avoids iterating all containers every call
+        private static readonly List<Container> _nearbyCache = new List<Container>();
+        private static Vector3 _nearbyCachePos;
+        private static float _nearbyCacheRadius;
+        private static float _nearbyCacheTime;
+        private const float NEARBY_CACHE_TTL = 1.0f;
+
+        // Combined material count cache for CraftFromContainers
+        private static readonly Dictionary<string, int> _materialCache = new Dictionary<string, int>();
+        private static float _materialCacheTime;
+        private static Vector3 _materialCachePos;
+        private static float _materialCacheRadius;
+        private const float MATERIAL_CACHE_TTL = 0.5f;
+
+        // Stale entry pruning
+        private static float _lastPruneTime;
+        private const float PRUNE_INTERVAL = 30f;
+
+        // Reflection for loading
         private static readonly MethodInfo _loadMethod;
         private static readonly MethodInfo _getStringHashMethod;
         private static readonly int _itemsHash;
-        private static bool _loggedOnce = false;
 
         static ContainerHelper()
         {
@@ -885,6 +905,43 @@ namespace MegaQoL
 
             _getStringHashMethod = typeof(ZDO).GetMethod("GetString", new[] { typeof(int), typeof(string) });
             _itemsHash = "items".GetStableHashCode();
+        }
+
+        public static ContainerType ClassifyContainer(Container container)
+        {
+            string name = container.gameObject.name.ToLower();
+            if (name.Contains("private"))
+                return ContainerType.Private;
+            if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
+                return ContainerType.BlackMetalChest;
+            if (name.Contains("barrel") || name.Contains("incinerator"))
+                return ContainerType.Barrel;
+            if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
+                !name.Contains("wood") && !name.Contains("blackmetal"))
+                return ContainerType.ReinforcedChest;
+            if (name.Contains("chest"))
+                return ContainerType.WoodChest;
+            return ContainerType.Unknown;
+        }
+
+        public static void Register(Container container)
+        {
+            AllContainers.Add(container);
+            _typeCache[container] = ClassifyContainer(container);
+        }
+
+        public static void Unregister(Container container)
+        {
+            AllContainers.Remove(container);
+            _typeCache.Remove(container);
+            InvalidateNearbyCache();
+        }
+
+        public static ContainerType GetContainerType(Container container)
+        {
+            if (_typeCache.TryGetValue(container, out var type))
+                return type;
+            return ContainerType.Unknown;
         }
 
         public static void EnsureLoaded(Container container, Inventory inventory)
@@ -933,20 +990,113 @@ namespace MegaQoL
             }
         }
 
+        public static void InvalidateNearbyCache()
+        {
+            _nearbyCacheTime = 0f;
+            _materialCacheTime = 0f;
+        }
+
+        public static void InvalidateMaterialCache()
+        {
+            _materialCacheTime = 0f;
+        }
+
         public static List<Container> FindNearbyContainers(Vector3 position, float radius)
         {
-            var result = new List<Container>();
+            float now = Time.time;
+
+            // Prune stale entries periodically (destroyed containers from zone unloads)
+            if (now - _lastPruneTime > PRUNE_INTERVAL)
+            {
+                _lastPruneTime = now;
+                AllContainers.RemoveWhere(c => c == null);
+                var staleKeys = new List<Container>();
+                foreach (var kvp in _typeCache)
+                    if (kvp.Key == null) staleKeys.Add(kvp.Key);
+                foreach (var k in staleKeys) _typeCache.Remove(k);
+            }
+
+            // Return cached result if still valid
+            if (now - _nearbyCacheTime < NEARBY_CACHE_TTL &&
+                Mathf.Approximately(_nearbyCacheRadius, radius) &&
+                (position - _nearbyCachePos).sqrMagnitude < 4f)
+            {
+                return _nearbyCache;
+            }
+
+            _nearbyCache.Clear();
+            _nearbyCachePos = position;
+            _nearbyCacheRadius = radius;
+            _nearbyCacheTime = now;
+
             float radiusSq = radius * radius;
             foreach (var container in AllContainers)
             {
                 if (container == null) continue;
                 if ((position - container.transform.position).sqrMagnitude > radiusSq) continue;
-                string name = container.gameObject.name.ToLower();
-                if (name.Contains("private")) continue;
-                if (name.Contains("chest") || name.Contains("barrel") || name.Contains("incinerator"))
-                    result.Add(container);
+                var type = GetContainerType(container);
+                if (type == ContainerType.Private || type == ContainerType.Unknown) continue;
+                _nearbyCache.Add(container);
             }
-            return result;
+            return _nearbyCache;
+        }
+
+        // Cached combined material counts (player inventory + nearby containers)
+        public static int GetCombinedItemCount(string itemName, Player player, float radius)
+        {
+            EnsureMaterialCache(player, radius);
+            return _materialCache.TryGetValue(itemName, out int count) ? count : 0;
+        }
+
+        private static void EnsureMaterialCache(Player player, float radius)
+        {
+            float now = Time.time;
+            Vector3 pos = player.transform.position;
+
+            if (now - _materialCacheTime < MATERIAL_CACHE_TTL &&
+                Mathf.Approximately(_materialCacheRadius, radius) &&
+                (pos - _materialCachePos).sqrMagnitude < 4f)
+            {
+                return;
+            }
+
+            _materialCache.Clear();
+            _materialCachePos = pos;
+            _materialCacheRadius = radius;
+            _materialCacheTime = now;
+
+            // Add player inventory
+            var playerInv = player.GetInventory();
+            if (playerInv != null)
+            {
+                foreach (var item in playerInv.GetAllItems())
+                {
+                    if (item == null) continue;
+                    string name = item.m_shared.m_name;
+                    if (_materialCache.ContainsKey(name))
+                        _materialCache[name] += item.m_stack;
+                    else
+                        _materialCache[name] = item.m_stack;
+                }
+            }
+
+            // Add nearby containers
+            var containers = FindNearbyContainers(pos, radius);
+            foreach (var container in containers)
+            {
+                var inv = container.GetInventory();
+                if (inv == null) continue;
+                EnsureLoaded(container, inv);
+                foreach (var item in inv.GetAllItems())
+                {
+                    if (item == null) continue;
+                    string name = item.m_shared.m_name;
+                    if (_materialCache.ContainsKey(name))
+                        _materialCache[name] += item.m_stack;
+                    else
+                        _materialCache[name] = item.m_stack;
+                }
+            }
         }
     }
 
@@ -958,7 +1108,9 @@ namespace MegaQoL
         [HarmonyPostfix]
         public static void Postfix(Container __instance)
         {
-            ContainerHelper.AllContainers.Add(__instance);
+            ContainerHelper.Register(__instance);
+            if (__instance.gameObject.GetComponent<ContainerDestroyTracker>() == null)
+                __instance.gameObject.AddComponent<ContainerDestroyTracker>();
         }
     }
 
@@ -968,7 +1120,16 @@ namespace MegaQoL
         [HarmonyPostfix]
         public static void Postfix(Container __instance)
         {
-            ContainerHelper.AllContainers.Remove(__instance);
+            ContainerHelper.Unregister(__instance);
+        }
+    }
+
+    public class ContainerDestroyTracker : MonoBehaviour
+    {
+        private void OnDestroy()
+        {
+            var c = GetComponent<Container>();
+            if (c != null) ContainerHelper.Unregister(c);
         }
     }
 
@@ -1006,7 +1167,12 @@ namespace MegaQoL
     public static class CookingStation_Awake_Registry_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(CookingStation __instance) => AutoRefuelHelper.AllCookingStations.Add(__instance);
+        public static void Postfix(CookingStation __instance)
+        {
+            AutoRefuelHelper.AllCookingStations.Add(__instance);
+            if (__instance.gameObject.GetComponent<CookingStationDestroyTracker>() == null)
+                __instance.gameObject.AddComponent<CookingStationDestroyTracker>();
+        }
     }
 
     [HarmonyPatch(typeof(CookingStation), "OnDestroyed")]
@@ -1016,13 +1182,27 @@ namespace MegaQoL
         public static void Postfix(CookingStation __instance) => AutoRefuelHelper.AllCookingStations.Remove(__instance);
     }
 
+    public class CookingStationDestroyTracker : MonoBehaviour
+    {
+        private void OnDestroy()
+        {
+            var cs = GetComponent<CookingStation>();
+            if (cs != null) AutoRefuelHelper.AllCookingStations.Remove(cs);
+        }
+    }
+
     // ==================== TURRET REGISTRY PATCHES ====================
 
     [HarmonyPatch(typeof(Turret), "Awake")]
     public static class Turret_Awake_Registry_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(Turret __instance) => BallistaAutoReloadHelper.AllTurrets.Add(__instance);
+        public static void Postfix(Turret __instance)
+        {
+            BallistaAutoReloadHelper.AllTurrets.Add(__instance);
+            if (__instance.gameObject.GetComponent<TurretDestroyTracker>() == null)
+                __instance.gameObject.AddComponent<TurretDestroyTracker>();
+        }
     }
 
     [HarmonyPatch(typeof(Turret), "OnDestroyed")]
@@ -1030,6 +1210,15 @@ namespace MegaQoL
     {
         [HarmonyPostfix]
         public static void Postfix(Turret __instance) => BallistaAutoReloadHelper.AllTurrets.Remove(__instance);
+    }
+
+    public class TurretDestroyTracker : MonoBehaviour
+    {
+        private void OnDestroy()
+        {
+            var t = GetComponent<Turret>();
+            if (t != null) BallistaAutoReloadHelper.AllTurrets.Remove(t);
+        }
     }
 
     // ==================== CHEST VFX ====================
@@ -1066,24 +1255,14 @@ namespace MegaQoL
         [HarmonyPostfix]
         public static void Postfix(Player __instance, Recipe recipe, bool discover, int qualityLevel, ref bool __result)
         {
-            if (__result) return; // Already have enough
+            if (__result) return;
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
             if (__instance != Player.m_localPlayer) return;
-            if (discover) return; // Discovery check, don't count containers
-
-            var playerInventory = __instance.GetInventory();
-            if (playerInventory == null) return;
+            if (discover) return;
             if (recipe.m_resources == null) return;
 
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(
-                __instance.transform.position, MegaQoLPlugin.CraftFromContainersRadius.Value);
-            if (nearbyContainers.Count == 0) return;
+            float radius = MegaQoLPlugin.CraftFromContainersRadius.Value;
 
-            // Ensure all container inventories are loaded
-            foreach (var c in nearbyContainers)
-                ContainerHelper.EnsureLoaded(c, c.GetInventory());
-
-            // Check if ALL requirements are met with player + container inventories combined
             bool allMet = true;
             foreach (var req in recipe.m_resources)
             {
@@ -1092,14 +1271,7 @@ namespace MegaQoL
                 if (needed <= 0) continue;
 
                 string itemName = req.m_resItem.m_itemData.m_shared.m_name;
-                int have = playerInventory.CountItems(itemName);
-
-                foreach (var container in nearbyContainers)
-                {
-                    var inv = container.GetInventory();
-                    if (inv != null) have += inv.CountItems(itemName);
-                }
-
+                int have = ContainerHelper.GetCombinedItemCount(itemName, __instance, radius);
                 if (have < needed) { allMet = false; break; }
             }
             __result = allMet;
@@ -1116,18 +1288,10 @@ namespace MegaQoL
             if (__result) return;
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
             if (__instance != Player.m_localPlayer) return;
-            if (__instance.InPlaceMode()) return; // Planting/building uses inventory only
+            if (__instance.InPlaceMode()) return;
             if (piece.m_resources == null) return;
 
-            var playerInventory = __instance.GetInventory();
-            if (playerInventory == null) return;
-
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(
-                __instance.transform.position, MegaQoLPlugin.CraftFromContainersRadius.Value);
-            if (nearbyContainers.Count == 0) return;
-
-            foreach (var c in nearbyContainers)
-                ContainerHelper.EnsureLoaded(c, c.GetInventory());
+            float radius = MegaQoLPlugin.CraftFromContainersRadius.Value;
 
             bool allMet = true;
             foreach (var req in piece.m_resources)
@@ -1137,14 +1301,7 @@ namespace MegaQoL
                 if (needed <= 0) continue;
 
                 string itemName = req.m_resItem.m_itemData.m_shared.m_name;
-                int have = playerInventory.CountItems(itemName);
-
-                foreach (var container in nearbyContainers)
-                {
-                    var inv = container.GetInventory();
-                    if (inv != null) have += inv.CountItems(itemName);
-                }
-
+                int have = ContainerHelper.GetCombinedItemCount(itemName, __instance, radius);
                 if (have < needed) { allMet = false; break; }
             }
             __result = allMet;
@@ -1220,6 +1377,9 @@ namespace MegaQoL
             // Play VFX once per affected container
             foreach (var container in affectedContainers)
                 ChestVFX.Play(container.gameObject);
+
+            // Invalidate material cache since inventory contents changed
+            ContainerHelper.InvalidateMaterialCache();
 
             // We handled all consumption, skip the original method
             return false;
