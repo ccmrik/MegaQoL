@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.2.3";
+        public const string PluginVersion = "1.3.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -76,6 +76,9 @@ namespace MegaQoL
 
         // Build Dust Removal
         public static ConfigEntry<bool> EnableNoBuildDust;
+
+        // Rune Build (bypass no-build zones)
+        public static ConfigEntry<bool> EnableRuneBuild;
 
         // Speed & Jump Adjustment
         public static ConfigEntry<bool> EnableSpeedAdjustment;
@@ -198,6 +201,10 @@ namespace MegaQoL
             // 10. Build Dust Removal
             EnableNoBuildDust = Config.Bind("10. Build Dust Removal", "Enable", true,
                 "Removes dust/particle effects when placing build pieces (keeps sound effects)");
+
+            // 10b. Rune Build
+            EnableRuneBuild = Config.Bind("10b. Rune Build", "Enable", true,
+                "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
 
             // 11. Speed & Jump Adjustment
             EnableSpeedAdjustment = Config.Bind("11. Speed & Jump", "EnableSpeedAdjustment", true,
@@ -442,10 +449,11 @@ namespace MegaQoL
             var allInstances = WearNTear.GetAllInstances();
             if (allInstances == null) return;
 
+            float rangeSq = range * range;
             foreach (var wnt in allInstances)
             {
                 if (wnt == null) continue;
-                if (Vector3.Distance(position, wnt.transform.position) > range) continue;
+                if ((position - wnt.transform.position).sqrMagnitude > rangeSq) continue;
                 if (wnt.GetHealthPercentage() >= 1f) continue;
                 wnt.Repair();
             }
@@ -456,26 +464,25 @@ namespace MegaQoL
 
     public static class AutoRefuelHelper
     {
+        // Cached registries — updated by Harmony patches
+        public static readonly HashSet<Fireplace> AllFireplaces = new HashSet<Fireplace>();
+        public static readonly HashSet<CookingStation> AllCookingStations = new HashSet<CookingStation>();
+
         public static void RefuelNearbyFireSources(Vector3 position, float range)
         {
-            #pragma warning disable CS0618
-            var fireplaces = UnityEngine.Object.FindObjectsOfType<Fireplace>();
-            #pragma warning restore CS0618
+            float rangeSq = range * range;
 
-            foreach (var fireplace in fireplaces)
+            foreach (var fireplace in AllFireplaces)
             {
                 if (fireplace == null) continue;
-                if (Vector3.Distance(position, fireplace.transform.position) > range) continue;
+                if ((position - fireplace.transform.position).sqrMagnitude > rangeSq) continue;
                 RefuelFireplace(fireplace);
             }
 
-            #pragma warning disable CS0618
-            var cookingStations = UnityEngine.Object.FindObjectsOfType<CookingStation>();
-            #pragma warning restore CS0618
-            foreach (var station in cookingStations)
+            foreach (var station in AllCookingStations)
             {
                 if (station == null) continue;
-                if (Vector3.Distance(position, station.transform.position) > range) continue;
+                if ((position - station.transform.position).sqrMagnitude > rangeSq) continue;
 
                 string objectName = station.gameObject.name.ToLower();
                 if (objectName.Contains("oven"))
@@ -520,8 +527,13 @@ namespace MegaQoL
 
     public static class AutoPetFeederHelper
     {
+        // Cache reflection lookups
+        private static readonly FieldInfo _consumeItemsField = typeof(MonsterAI).GetField("m_consumeItems", BindingFlags.Public | BindingFlags.Instance);
+        private static readonly MethodInfo _onConsumedMethod = typeof(Tameable).GetMethod("OnConsumedItem", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
         public static void FeedNearbyPets(Vector3 position, float range)
         {
+            float rangeSq = range * range;
             var allCharacters = Character.GetAllCharacters();
 
             foreach (var character in allCharacters)
@@ -529,45 +541,34 @@ namespace MegaQoL
                 if (character == null) continue;
                 if (!character.IsTamed()) continue;
                 if (character is Player) continue;
-
-                float distance = Vector3.Distance(position, character.transform.position);
-                if (distance > range) continue;
+                if ((position - character.transform.position).sqrMagnitude > rangeSq) continue;
 
                 var tameable = character.GetComponent<Tameable>();
                 if (tameable == null) continue;
 
-                TryFeedCreature(tameable, position, range);
+                TryFeedCreature(tameable, position, rangeSq);
             }
         }
 
-        private static void TryFeedCreature(Tameable tameable, Vector3 position, float range)
+        private static void TryFeedCreature(Tameable tameable, Vector3 position, float rangeSq)
         {
             var monsterAI = tameable.GetComponent<MonsterAI>();
             if (monsterAI == null) return;
+            if (_consumeItemsField == null) return;
 
-            var consumeItemsField = typeof(MonsterAI).GetField("m_consumeItems", BindingFlags.Public | BindingFlags.Instance);
-            if (consumeItemsField == null) return;
-
-            var consumeItems = consumeItemsField.GetValue(monsterAI) as List<ItemDrop>;
+            var consumeItems = _consumeItemsField.GetValue(monsterAI) as List<ItemDrop>;
             if (consumeItems == null || consumeItems.Count == 0) return;
 
-            var validFoodNames = new List<string>();
+            var validFoodNames = new HashSet<string>();
             foreach (var foodItem in consumeItems)
-            {
-                if (foodItem != null)
-                    validFoodNames.Add(foodItem.gameObject.name);
-            }
-
-            var nview = tameable.GetComponent<ZNetView>();
-            if (nview == null || !nview.IsValid()) return;
+                if (foodItem != null) validFoodNames.Add(foodItem.gameObject.name);
 
             if (!tameable.IsHungry()) return;
 
             foreach (var container in ContainerHelper.AllContainers)
             {
                 if (container == null) continue;
-                float distance = Vector3.Distance(position, container.transform.position);
-                if (distance > range) continue;
+                if ((position - container.transform.position).sqrMagnitude > rangeSq) continue;
                 if (!IsAllowedContainer(container)) continue;
 
                 var inventory = container.GetInventory();
@@ -581,9 +582,8 @@ namespace MegaQoL
                     if (validFoodNames.Contains(prefabName))
                     {
                         inventory.RemoveItem(item, 1);
-                        var onConsumedMethod = typeof(Tameable).GetMethod("OnConsumedItem", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (onConsumedMethod != null)
-                            onConsumedMethod.Invoke(tameable, new object[] { null });
+                        if (_onConsumedMethod != null)
+                            _onConsumedMethod.Invoke(tameable, new object[] { null });
                         return;
                     }
                 }
@@ -612,16 +612,16 @@ namespace MegaQoL
 
     public static class BallistaAutoReloadHelper
     {
+        public static readonly HashSet<Turret> AllTurrets = new HashSet<Turret>();
+
         public static void ReloadNearbyBallistas(Vector3 position, float range)
         {
-            #pragma warning disable CS0618
-            var turrets = UnityEngine.Object.FindObjectsOfType<Turret>();
-            #pragma warning restore CS0618
+            float rangeSq = range * range;
 
-            foreach (var turret in turrets)
+            foreach (var turret in AllTurrets)
             {
                 if (turret == null) continue;
-                if (Vector3.Distance(position, turret.transform.position) > range) continue;
+                if ((position - turret.transform.position).sqrMagnitude > rangeSq) continue;
 
                 var nview = turret.GetComponent<ZNetView>();
                 if (nview == null || !nview.IsValid()) continue;
@@ -966,6 +966,66 @@ namespace MegaQoL
         {
             ContainerHelper.AllContainers.Remove(__instance);
         }
+    }
+
+    // ==================== FIREPLACE / COOKING STATION REGISTRY PATCHES ====================
+
+    [HarmonyPatch(typeof(Fireplace), "Awake")]
+    public static class Fireplace_Awake_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Fireplace __instance) => AutoRefuelHelper.AllFireplaces.Add(__instance);
+    }
+
+    // Fireplace has no OnDestroyed, so we patch the Unity OnDestroy via a MonoBehaviour helper
+    [HarmonyPatch(typeof(Fireplace), "Awake")]
+    public static class Fireplace_TrackDestroy_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Fireplace __instance)
+        {
+            if (__instance.gameObject.GetComponent<FireplaceDestroyTracker>() == null)
+                __instance.gameObject.AddComponent<FireplaceDestroyTracker>();
+        }
+    }
+
+    public class FireplaceDestroyTracker : MonoBehaviour
+    {
+        private void OnDestroy()
+        {
+            var fp = GetComponent<Fireplace>();
+            if (fp != null) AutoRefuelHelper.AllFireplaces.Remove(fp);
+        }
+    }
+
+    [HarmonyPatch(typeof(CookingStation), "Awake")]
+    public static class CookingStation_Awake_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CookingStation __instance) => AutoRefuelHelper.AllCookingStations.Add(__instance);
+    }
+
+    [HarmonyPatch(typeof(CookingStation), "OnDestroyed")]
+    public static class CookingStation_OnDestroyed_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CookingStation __instance) => AutoRefuelHelper.AllCookingStations.Remove(__instance);
+    }
+
+    // ==================== TURRET REGISTRY PATCHES ====================
+
+    [HarmonyPatch(typeof(Turret), "Awake")]
+    public static class Turret_Awake_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Turret __instance) => BallistaAutoReloadHelper.AllTurrets.Add(__instance);
+    }
+
+    [HarmonyPatch(typeof(Turret), "OnDestroyed")]
+    public static class Turret_OnDestroyed_Registry_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Turret __instance) => BallistaAutoReloadHelper.AllTurrets.Remove(__instance);
     }
 
     // ==================== CHEST VFX ====================
@@ -1434,6 +1494,20 @@ namespace MegaQoL
             if (!_dust_applied || _placeEffectField == null || piece == null) return;
             _placeEffectField.SetValue(piece, _dust_originalEffect);
             _dust_applied = false;
+        }
+    }
+
+    // ==================== RUNE BUILD (BYPASS NO-BUILD ZONES) ====================
+
+    [HarmonyPatch(typeof(Location), "IsInsideNoBuildLocation")]
+    public static class Location_IsInsideNoBuildLocation_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ref bool __result)
+        {
+            if (!__result) return;
+            if (!MegaQoLPlugin.EnableRuneBuild.Value) return;
+            __result = false;
         }
     }
 
