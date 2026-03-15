@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.1";
+        public const string PluginVersion = "1.5.2";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -743,35 +743,46 @@ namespace MegaQoL
                 var playerInventory = player.GetInventory();
                 if (playerInventory == null) return;
 
-                // Snapshot the container list — cache returns a shared mutable list
-                var cachedList = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
-                var nearbyContainers = new List<Container>(cachedList.Count);
-                foreach (var c in cachedList)
-                    if (c != null) nearbyContainers.Add(c);
+                // Invalidate cache before deposit to ensure fresh container data
+                ContainerHelper.InvalidateNearbyCache();
+
+                var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
 
                 if (nearbyContainers.Count == 0)
                 {
+                    MegaQoLPlugin.Log($"[QuickDeposit] No containers found within {radius}m (registry has {ContainerHelper.AllContainers.Count} total)");
                     player.Message(MessageHud.MessageType.Center, "No chests nearby");
                     return;
                 }
 
+                MegaQoLPlugin.Log($"[QuickDeposit] Found {nearbyContainers.Count} container(s) nearby");
+
                 int totalDeposited = 0;
+                int chestsSkipped = 0;
+                int chestsEmpty = 0;
                 var affectedChests = new HashSet<Container>();
 
-                foreach (var container in nearbyContainers)
+                // Snapshot the list — FindNearbyContainers returns a shared mutable cache
+                var containers = new List<Container>(nearbyContainers);
+
+                foreach (var container in containers)
                 {
-                    var nview = container.GetComponent<ZNetView>();
-                    if (nview == null || !nview.IsValid()) continue;
+                    if (container == null) { chestsSkipped++; continue; }
 
                     var chestInventory = container.GetInventory();
-                    if (chestInventory == null) continue;
+                    if (chestInventory == null) { chestsSkipped++; continue; }
 
                     ContainerHelper.EnsureLoaded(container, chestInventory);
 
                     var chestItemNames = new HashSet<string>();
                     foreach (var chestItem in chestInventory.GetAllItems())
                         if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
-                    if (chestItemNames.Count == 0) continue;
+
+                    if (chestItemNames.Count == 0)
+                    {
+                        chestsEmpty++;
+                        continue;
+                    }
 
                     var toDeposit = new List<ItemDrop.ItemData>();
                     foreach (var playerItem in playerInventory.GetAllItems())
@@ -799,7 +810,7 @@ namespace MegaQoL
                     }
                 }
 
-                // Explicitly save affected containers and invalidate caches
+                // Save affected containers and play VFX
                 foreach (var chest in affectedChests)
                 {
                     try
@@ -811,7 +822,12 @@ namespace MegaQoL
                 }
 
                 if (affectedChests.Count > 0)
+                {
+                    ContainerHelper.InvalidateNearbyCache();
                     ContainerHelper.InvalidateMaterialCache();
+                }
+
+                MegaQoLPlugin.Log($"[QuickDeposit] Result: {totalDeposited} items into {affectedChests.Count} chest(s), {chestsSkipped} skipped, {chestsEmpty} empty");
 
                 if (totalDeposited > 0)
                     player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
@@ -820,7 +836,7 @@ namespace MegaQoL
             }
             catch (Exception ex)
             {
-                MegaQoLPlugin.LogError($"[QuickDeposit] Error: {ex.Message}");
+                MegaQoLPlugin.LogError($"[QuickDeposit] Error: {ex}");
                 player.Message(MessageHud.MessageType.Center, "Quick Deposit error — check log");
             }
         }
