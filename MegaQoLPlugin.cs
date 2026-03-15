@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.9";
+        public const string PluginVersion = "1.5.10";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2160,9 +2160,15 @@ namespace MegaQoL
     [HarmonyPatch(typeof(MonsterAI), "PheromoneFleeCheck")]
     public static class PheromoneFleeCheckNullGuard
     {
-        static bool Prefix(Character target)
+        static bool Prefix(MonsterAI __instance, Character target)
         {
-            return target != null;
+            return __instance != null && target != null;
+        }
+
+        static Exception Finalizer(Exception __exception)
+        {
+            // Swallow NRE from stale/destroyed references inside vanilla code
+            return null;
         }
     }
 }
