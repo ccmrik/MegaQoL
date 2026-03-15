@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.7";
+        public const string PluginVersion = "1.5.8";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2149,6 +2149,18 @@ namespace MegaQoL
                 stamina -= rightItem.m_shared.m_attack.m_attackStamina;
                 MassPlantHelper.Ghosts[i].GetComponent<Piece>().SetInvalidPlacementHeightlight(invalid);
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // VANILLA BUG FIX — MonsterAI.PheromoneFleeCheck NRE guard
+    // ═══════════════════════════════════════════════════════════════
+    [HarmonyPatch(typeof(MonsterAI), "PheromoneFleeCheck")]
+    public static class PheromoneFleeCheckNullGuard
+    {
+        static bool Prefix(Character target)
+        {
+            return target != null;
         }
     }
 }
