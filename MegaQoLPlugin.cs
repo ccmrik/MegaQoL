@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.6";
+        public const string PluginVersion = "1.5.7";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -768,34 +768,52 @@ namespace MegaQoL
                 return;
             }
 
+            // Build eligible items ONCE — skip hotbar (row 0) and equipped
+            var eligible = new List<ItemDrop.ItemData>();
+            var eligibleNames = new HashSet<string>();
+            foreach (var playerItem in playerInventory.GetAllItems())
+            {
+                if (playerItem == null) continue;
+                if (playerItem.m_equipped) continue;
+                if (playerItem.m_gridPos.y == 0) continue;
+                eligible.Add(playerItem);
+                eligibleNames.Add(playerItem.m_shared.m_name);
+            }
+
+            if (eligible.Count == 0)
+            {
+                player.Message(MessageHud.MessageType.Center, "No depositable items");
+                return;
+            }
+
             int totalDeposited = 0;
             var affectedChests = new HashSet<Container>();
 
             foreach (var container in nearbyContainers)
             {
+                if (eligible.Count == 0) break;    // Everything deposited — done
+
                 var chestInventory = container.GetInventory();
                 if (chestInventory == null) continue;
 
                 ContainerHelper.EnsureLoaded(container, chestInventory);
 
+                // Quick check: does this chest contain any item names we have?
                 var chestItemNames = new HashSet<string>();
                 foreach (var chestItem in chestInventory.GetAllItems())
-                    if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
+                {
+                    if (chestItem == null) continue;
+                    if (eligibleNames.Contains(chestItem.m_shared.m_name))
+                        chestItemNames.Add(chestItem.m_shared.m_name);
+                }
 
                 if (chestItemNames.Count == 0) continue;
 
-                var toDeposit = new List<ItemDrop.ItemData>();
-                foreach (var playerItem in playerInventory.GetAllItems())
+                for (int i = eligible.Count - 1; i >= 0; i--)
                 {
-                    if (playerItem == null) continue;
-                    if (playerItem.m_equipped) continue;
-                    if (playerItem.m_gridPos.y == 0) continue;    // Skip hotbar (row 0)
-                    if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
-                    toDeposit.Add(playerItem);
-                }
+                    var item = eligible[i];
+                    if (!chestItemNames.Contains(item.m_shared.m_name)) continue;
 
-                foreach (var item in toDeposit)
-                {
                     int stack = item.m_stack;
                     if (chestInventory.CanAddItem(item, stack))
                     {
@@ -803,6 +821,7 @@ namespace MegaQoL
                         playerInventory.RemoveItem(item);
                         totalDeposited += stack;
                         affectedChests.Add(container);
+                        eligible.RemoveAt(i);
                     }
                 }
             }
