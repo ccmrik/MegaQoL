@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.0";
+        public const string PluginVersion = "1.5.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -692,6 +692,7 @@ namespace MegaQoL
 
             foreach (var container in nearbyContainers)
             {
+                if (container == null) continue;
                 var inventory = container.GetInventory();
                 if (inventory == null) continue;
 
@@ -737,65 +738,91 @@ namespace MegaQoL
     {
         public static void DepositMatchingItems(Player player, float radius)
         {
-            var playerInventory = player.GetInventory();
-            if (playerInventory == null) return;
-
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
-
-            if (nearbyContainers.Count == 0)
+            try
             {
-                player.Message(MessageHud.MessageType.Center, "No chests nearby");
-                return;
-            }
+                var playerInventory = player.GetInventory();
+                if (playerInventory == null) return;
 
-            int totalDeposited = 0;
-            var affectedChests = new HashSet<Container>();
+                // Snapshot the container list — cache returns a shared mutable list
+                var cachedList = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
+                var nearbyContainers = new List<Container>(cachedList.Count);
+                foreach (var c in cachedList)
+                    if (c != null) nearbyContainers.Add(c);
 
-            foreach (var container in nearbyContainers)
-            {
-                var chestInventory = container.GetInventory();
-                if (chestInventory == null) continue;
-
-                ContainerHelper.EnsureLoaded(container, chestInventory);
-
-                var chestItemNames = new HashSet<string>();
-                foreach (var chestItem in chestInventory.GetAllItems())
-                    if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
-                if (chestItemNames.Count == 0) continue;
-
-                var toDeposit = new List<ItemDrop.ItemData>();
-                foreach (var playerItem in playerInventory.GetAllItems())
+                if (nearbyContainers.Count == 0)
                 {
-                    if (playerItem == null) continue;
-                    if (playerItem.m_equipped) continue;
-                    // Skip hotbar (top row, y == 0)
-                    if (playerItem.m_gridPos.y == 0) continue;
-                    // Skip AzuExtendedPlayerInventory equipment slots (rows beyond standard 4-row inventory)
-                    if (playerItem.m_gridPos.y > 3) continue;
-                    if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
-                    toDeposit.Add(playerItem);
+                    player.Message(MessageHud.MessageType.Center, "No chests nearby");
+                    return;
                 }
 
-                foreach (var item in toDeposit)
+                int totalDeposited = 0;
+                var affectedChests = new HashSet<Container>();
+
+                foreach (var container in nearbyContainers)
                 {
-                    int stack = item.m_stack;
-                    if (chestInventory.CanAddItem(item, stack))
+                    var nview = container.GetComponent<ZNetView>();
+                    if (nview == null || !nview.IsValid()) continue;
+
+                    var chestInventory = container.GetInventory();
+                    if (chestInventory == null) continue;
+
+                    ContainerHelper.EnsureLoaded(container, chestInventory);
+
+                    var chestItemNames = new HashSet<string>();
+                    foreach (var chestItem in chestInventory.GetAllItems())
+                        if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
+                    if (chestItemNames.Count == 0) continue;
+
+                    var toDeposit = new List<ItemDrop.ItemData>();
+                    foreach (var playerItem in playerInventory.GetAllItems())
                     {
-                        chestInventory.AddItem(item);
-                        playerInventory.RemoveItem(item);
-                        totalDeposited += stack;
-                        affectedChests.Add(container);
+                        if (playerItem == null) continue;
+                        if (playerItem.m_equipped) continue;
+                        // Skip hotbar (top row, y == 0)
+                        if (playerItem.m_gridPos.y == 0) continue;
+                        // Skip AzuExtendedPlayerInventory equipment slots (rows beyond standard 4-row inventory)
+                        if (playerItem.m_gridPos.y > 3) continue;
+                        if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
+                        toDeposit.Add(playerItem);
+                    }
+
+                    foreach (var item in toDeposit)
+                    {
+                        int stack = item.m_stack;
+                        if (chestInventory.CanAddItem(item, stack))
+                        {
+                            chestInventory.AddItem(item);
+                            playerInventory.RemoveItem(item);
+                            totalDeposited += stack;
+                            affectedChests.Add(container);
+                        }
                     }
                 }
+
+                // Explicitly save affected containers and invalidate caches
+                foreach (var chest in affectedChests)
+                {
+                    try
+                    {
+                        typeof(Container).GetMethod("Save", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)?.Invoke(chest, null);
+                    }
+                    catch { }
+                    ChestVFX.Play(chest.gameObject);
+                }
+
+                if (affectedChests.Count > 0)
+                    ContainerHelper.InvalidateMaterialCache();
+
+                if (totalDeposited > 0)
+                    player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
+                else
+                    player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
             }
-
-            foreach (var chest in affectedChests)
-                ChestVFX.Play(chest.gameObject);
-
-            if (totalDeposited > 0)
-                player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
-            else
-                player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
+            catch (Exception ex)
+            {
+                MegaQoLPlugin.LogError($"[QuickDeposit] Error: {ex.Message}");
+                player.Message(MessageHud.MessageType.Center, "Quick Deposit error — check log");
+            }
         }
     }
 
@@ -1279,7 +1306,11 @@ namespace MegaQoL
             if (nearbyContainers.Count == 0) return true;
 
             foreach (var c in nearbyContainers)
-                ContainerHelper.EnsureLoaded(c, c.GetInventory());
+            {
+                if (c == null) continue;
+                var inv = c.GetInventory();
+                if (inv != null) ContainerHelper.EnsureLoaded(c, inv);
+            }
 
             var affectedContainers = new HashSet<Container>();
 
@@ -1306,6 +1337,7 @@ namespace MegaQoL
                     foreach (var container in nearbyContainers)
                     {
                         if (needed <= 0) break;
+                        if (container == null) continue;
                         var inv = container.GetInventory();
                         if (inv == null) continue;
 
