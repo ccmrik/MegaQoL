@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.4";
+        public const string PluginVersion = "1.5.5";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -755,140 +755,71 @@ namespace MegaQoL
 
     public static class QuickDepositHelper
     {
-        private const int MAX_CONTAINERS_PER_DEPOSIT = 64;
-
         public static void DepositMatchingItems(Player player, float radius)
         {
-            try
+            var playerInventory = player.GetInventory();
+            if (playerInventory == null) return;
+
+            var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
+
+            if (nearbyContainers.Count == 0)
             {
-                var playerInventory = player.GetInventory();
-                if (playerInventory == null) return;
+                player.Message(MessageHud.MessageType.Center, "No chests nearby");
+                return;
+            }
 
-                // Invalidate cache before deposit to ensure fresh container data
-                ContainerHelper.InvalidateNearbyCache();
+            int totalDeposited = 0;
+            var affectedChests = new HashSet<Container>();
 
-                var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
+            foreach (var container in nearbyContainers)
+            {
+                var chestInventory = container.GetInventory();
+                if (chestInventory == null) continue;
 
-                if (nearbyContainers.Count == 0)
-                {
-                    MegaQoLPlugin.Log($"[QuickDeposit] No containers found within {radius}m (registry has {ContainerHelper.AllContainers.Count} total)");
-                    player.Message(MessageHud.MessageType.Center, "No chests nearby");
-                    return;
-                }
+                ContainerHelper.EnsureLoaded(container, chestInventory);
 
-                // Snapshot and cap to prevent lag in massive bases
-                var containers = new List<Container>(nearbyContainers);
-                if (containers.Count > MAX_CONTAINERS_PER_DEPOSIT)
-                {
-                    MegaQoLPlugin.LogWarning($"[QuickDeposit] {containers.Count} containers in range — capping to nearest {MAX_CONTAINERS_PER_DEPOSIT}");
-                    containers.Sort((a, b) =>
-                        (player.transform.position - a.transform.position).sqrMagnitude
-                            .CompareTo((player.transform.position - b.transform.position).sqrMagnitude));
-                    containers.RemoveRange(MAX_CONTAINERS_PER_DEPOSIT, containers.Count - MAX_CONTAINERS_PER_DEPOSIT);
-                }
+                var chestItemNames = new HashSet<string>();
+                foreach (var chestItem in chestInventory.GetAllItems())
+                    if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
 
-                // Build a snapshot of all depositable player items (non-hotbar, non-equipped, rows 1-3)
-                var eligibleItems = new List<ItemDrop.ItemData>();
+                if (chestItemNames.Count == 0) continue;
+
+                var toDeposit = new List<ItemDrop.ItemData>();
                 foreach (var playerItem in playerInventory.GetAllItems())
                 {
                     if (playerItem == null) continue;
                     if (playerItem.m_equipped) continue;
-                    if (playerItem.m_gridPos.y == 0) continue;    // Skip hotbar
-                    if (playerItem.m_gridPos.y > 3) continue;     // Skip extended inventory slots
-                    eligibleItems.Add(playerItem);
+                    if (playerItem.m_gridPos.y == 0) continue;    // Skip hotbar (row 0)
+                    if (playerItem.m_gridPos.y > 3) continue;     // Skip AzuExtendedPlayerInventory slots
+                    if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
+                    toDeposit.Add(playerItem);
                 }
 
-                MegaQoLPlugin.Log($"[QuickDeposit] {containers.Count} containers, {eligibleItems.Count} eligible player items");
-
-                if (eligibleItems.Count == 0)
+                foreach (var item in toDeposit)
                 {
-                    player.Message(MessageHud.MessageType.Center, "No depositable items (hotbar & equipped are protected)");
-                    return;
-                }
-
-                int totalDeposited = 0;
-                int chestsEmpty = 0;
-                var affectedChests = new HashSet<Container>();
-
-                foreach (var container in containers)
-                {
-                    if (container == null) continue;
-
-                    var nview = container.GetComponent<ZNetView>();
-                    if (nview == null || !nview.IsValid()) continue;
-
-                    var chestInventory = container.GetInventory();
-                    if (chestInventory == null) continue;
-
-                    ContainerHelper.EnsureLoaded(container, chestInventory);
-
-                    // Build set of item names already in this chest
-                    var chestItemNames = new HashSet<string>();
-                    foreach (var chestItem in chestInventory.GetAllItems())
-                        if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
-
-                    if (chestItemNames.Count == 0) { chestsEmpty++; continue; }
-
-                    // Find matching items to deposit into this chest
-                    var toDeposit = new List<ItemDrop.ItemData>();
-                    foreach (var item in eligibleItems)
+                    int stack = item.m_stack;
+                    if (chestInventory.CanAddItem(item, stack))
                     {
-                        if (item.m_stack <= 0) continue;
-                        if (!chestItemNames.Contains(item.m_shared.m_name)) continue;
-                        toDeposit.Add(item);
-                    }
-
-                    if (toDeposit.Count == 0) continue;
-
-                    // Claim ZDO ownership BEFORE modifying the container
-                    nview.ClaimOwnership();
-
-                    foreach (var item in toDeposit)
-                    {
-                        if (item.m_stack <= 0) continue;
-                        int stack = item.m_stack;
-
-                        // Use the proven Valheim pattern: check CanAddItem first, then AddItem + RemoveItem
-                        if (chestInventory.CanAddItem(item, stack))
-                        {
-                            chestInventory.AddItem(item);
-                            playerInventory.RemoveItem(item);
-                            totalDeposited += stack;
-                            affectedChests.Add(container);
-                        }
+                        chestInventory.AddItem(item);
+                        playerInventory.RemoveItem(item);
+                        totalDeposited += stack;
+                        affectedChests.Add(container);
                     }
                 }
-
-                // Persist changes: write inventory directly to ZDO (bypasses Container.Save() ownership quirks)
-                foreach (var chest in affectedChests)
-                {
-                    SaveContainerToZDO(chest);
-                    ChestVFX.Play(chest.gameObject);
-                }
-
-                if (affectedChests.Count > 0)
-                {
-                    ContainerHelper.InvalidateNearbyCache();
-                    ContainerHelper.InvalidateMaterialCache();
-                }
-
-                MegaQoLPlugin.Log($"[QuickDeposit] Deposited {totalDeposited} items into {affectedChests.Count} chest(s) ({chestsEmpty} empty)");
-
-                if (totalDeposited > 0)
-                    player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
-                else
-                    player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
             }
-            catch (Exception ex)
-            {
-                MegaQoLPlugin.LogError($"[QuickDeposit] Error: {ex}");
-                player.Message(MessageHud.MessageType.Center, "Quick Deposit error — check log");
-            }
+
+            foreach (var chest in affectedChests)
+                ChestVFX.Play(chest.gameObject);
+
+            if (totalDeposited > 0)
+                player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
+            else
+                player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
         }
 
         /// <summary>
-        /// Writes a container's in-memory inventory to its ZDO so changes persist across zone reloads.
-        /// Uses the same format as Container.Save(): Inventory → ZPackage → base64 string → ZDO.
+        /// Writes a container's in-memory inventory to its ZDO so changes persist.
+        /// Used by ChestAutoPickup.
         /// </summary>
         public static void SaveContainerToZDO(Container container)
         {
