@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.10";
+        public const string PluginVersion = "1.5.11";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -577,10 +577,9 @@ namespace MegaQoL
         {
             int ammoNeeded = maxAmmo - currentAmmo;
 
-            var allowedAmmoField = typeof(Turret).GetField("m_allowedAmmo", BindingFlags.Public | BindingFlags.Instance);
             List<ItemDrop> allowedAmmo = null;
-            if (allowedAmmoField != null)
-                allowedAmmo = allowedAmmoField.GetValue(turret) as List<ItemDrop>;
+            if (BallistaFriendlyHelper.AllowedAmmoField != null)
+                allowedAmmo = BallistaFriendlyHelper.AllowedAmmoField.GetValue(turret) as List<ItemDrop>;
 
             var validAmmoNames = new List<string>();
             if (allowedAmmo != null && allowedAmmo.Count > 0)
@@ -1453,6 +1452,21 @@ namespace MegaQoL
 
     public static class BallistaFriendlyHelper
     {
+        // Cached reflection — looked up ONCE, not every frame
+        private static readonly FieldInfo _targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo _haveTargetField = typeof(Turret).GetField("m_haveTarget", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo _allowedAmmoField = typeof(Turret).GetField("m_allowedAmmo", BindingFlags.Public | BindingFlags.Instance);
+
+        public static FieldInfo TargetField => _targetField;
+        public static FieldInfo HaveTargetField => _haveTargetField;
+        public static FieldInfo AllowedAmmoField => _allowedAmmoField;
+
+        public static Character GetTarget(Turret turret)
+        {
+            if (_targetField == null) return null;
+            return _targetField.GetValue(turret) as Character;
+        }
+
         public static bool IsFriendlyToPlayer(Character target)
         {
             if (target == null) return true;
@@ -1471,10 +1485,8 @@ namespace MegaQoL
 
         public static void ClearFriendlyTarget(Turret turret)
         {
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            var haveTargetField = typeof(Turret).GetField("m_haveTarget", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField != null) targetField.SetValue(turret, null);
-            if (haveTargetField != null) haveTargetField.SetValue(turret, false);
+            if (_targetField != null) _targetField.SetValue(turret, null);
+            if (_haveTargetField != null) _haveTargetField.SetValue(turret, false);
         }
     }
 
@@ -1485,9 +1497,7 @@ namespace MegaQoL
         public static void Prefix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField == null) return;
-            var target = targetField.GetValue(__instance) as Character;
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
         }
@@ -1496,9 +1506,7 @@ namespace MegaQoL
         public static void Postfix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField == null) return;
-            var target = targetField.GetValue(__instance) as Character;
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
         }
@@ -1513,22 +1521,16 @@ namespace MegaQoL
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
             __instance.m_targetPlayers = false;
             __instance.m_targetTamed = false;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField != null)
-            {
-                var currentTarget = targetField.GetValue(__instance) as Character;
-                if (currentTarget != null && BallistaFriendlyHelper.IsFriendlyToPlayer(currentTarget))
-                    BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
-            }
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
+            if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
+                BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
         }
 
         [HarmonyPostfix]
         public static void Postfix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField == null) return;
-            var target = targetField.GetValue(__instance) as Character;
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
         }
@@ -1541,17 +1543,10 @@ namespace MegaQoL
         public static bool Prefix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return true;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField == null) return true;
-            var target = targetField.GetValue(__instance) as Character;
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
             {
-                var haveTargetField = typeof(Turret).GetField("m_haveTarget", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (haveTargetField != null)
-                {
-                    targetField.SetValue(__instance, null);
-                    haveTargetField.SetValue(__instance, false);
-                }
+                BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
                 return false;
             }
             return true;
@@ -1565,14 +1560,10 @@ namespace MegaQoL
         public static bool Prefix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return true;
-            var targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
-            var haveTargetField = typeof(Turret).GetField("m_haveTarget", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetField == null || haveTargetField == null) return true;
-            var target = targetField.GetValue(__instance) as Character;
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
             {
-                targetField.SetValue(__instance, null);
-                haveTargetField.SetValue(__instance, false);
+                BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
                 return false;
             }
             return true;
