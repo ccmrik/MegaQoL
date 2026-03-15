@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.5";
+        public const string PluginVersion = "1.5.6";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -790,7 +790,6 @@ namespace MegaQoL
                     if (playerItem == null) continue;
                     if (playerItem.m_equipped) continue;
                     if (playerItem.m_gridPos.y == 0) continue;    // Skip hotbar (row 0)
-                    if (playerItem.m_gridPos.y > 3) continue;     // Skip AzuExtendedPlayerInventory slots
                     if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
                     toDeposit.Add(playerItem);
                 }
