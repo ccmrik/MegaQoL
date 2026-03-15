@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.8";
+        public const string PluginVersion = "1.5.9";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1884,6 +1884,8 @@ namespace MegaQoL
                 UnityEngine.Object.Destroy(joint);
             foreach (var rb in ghost.GetComponentsInChildren<Rigidbody>())
                 UnityEngine.Object.Destroy(rb);
+            foreach (var col in ghost.GetComponentsInChildren<Collider>())
+                UnityEngine.Object.Destroy(col);
 
             int layer = LayerMask.NameToLayer("ghost");
             foreach (var t in ghost.GetComponentsInChildren<Transform>())
