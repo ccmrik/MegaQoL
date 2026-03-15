@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.3";
+        public const string PluginVersion = "1.5.4";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -685,13 +685,16 @@ namespace MegaQoL
     public static class ChestAutoPickupHelper
     {
         private static readonly Collider[] _overlapBuffer = new Collider[128];
+        private const int MAX_CONTAINERS_PER_PICKUP = 32;
 
         public static void PickupNearbyItems(Vector3 playerPosition, float radius)
         {
             var nearbyContainers = ContainerHelper.FindNearbyContainers(playerPosition, radius);
+            int count = Mathf.Min(nearbyContainers.Count, MAX_CONTAINERS_PER_PICKUP);
 
-            foreach (var container in nearbyContainers)
+            for (int c = 0; c < count; c++)
             {
+                var container = nearbyContainers[c];
                 if (container == null) continue;
 
                 var containerNview = container.GetComponent<ZNetView>();
@@ -708,7 +711,9 @@ namespace MegaQoL
                 if (existingItems.Count == 0) continue;
 
                 bool containerModified = false;
-                int dropCount = Physics.OverlapSphereNonAlloc(container.transform.position, radius, _overlapBuffer);
+                // Use a tighter radius (capped at 5m per container) for the physics query
+                float pickupRange = Mathf.Min(radius, 5f);
+                int dropCount = Physics.OverlapSphereNonAlloc(container.transform.position, pickupRange, _overlapBuffer);
                 for (int j = 0; j < dropCount; j++)
                 {
                     var drop = _overlapBuffer[j].GetComponentInParent<ItemDrop>();
@@ -718,7 +723,6 @@ namespace MegaQoL
 
                     if (inventory.CanAddItem(drop.m_itemData, drop.m_itemData.m_stack))
                     {
-                        // Claim container ownership so Save() persists to ZDO
                         if (!containerModified)
                         {
                             containerNview.ClaimOwnership();
@@ -741,17 +745,8 @@ namespace MegaQoL
                     }
                 }
 
-                // Explicitly save container to ZDO after all pickups
-                if (containerModified && containerNview.IsOwner())
-                {
-                    try
-                    {
-                        ZPackage pkg = new ZPackage();
-                        inventory.Save(pkg);
-                        containerNview.GetZDO().Set(ZDOVars.s_items, pkg.GetBase64());
-                    }
-                    catch { }
-                }
+                if (containerModified)
+                    QuickDepositHelper.SaveContainerToZDO(container);
             }
         }
     }
@@ -760,6 +755,8 @@ namespace MegaQoL
 
     public static class QuickDepositHelper
     {
+        private const int MAX_CONTAINERS_PER_DEPOSIT = 64;
+
         public static void DepositMatchingItems(Player player, float radius)
         {
             try
@@ -779,103 +776,95 @@ namespace MegaQoL
                     return;
                 }
 
-                MegaQoLPlugin.Log($"[QuickDeposit] Found {nearbyContainers.Count} container(s) nearby");
+                // Snapshot and cap to prevent lag in massive bases
+                var containers = new List<Container>(nearbyContainers);
+                if (containers.Count > MAX_CONTAINERS_PER_DEPOSIT)
+                {
+                    MegaQoLPlugin.LogWarning($"[QuickDeposit] {containers.Count} containers in range — capping to nearest {MAX_CONTAINERS_PER_DEPOSIT}");
+                    containers.Sort((a, b) =>
+                        (player.transform.position - a.transform.position).sqrMagnitude
+                            .CompareTo((player.transform.position - b.transform.position).sqrMagnitude));
+                    containers.RemoveRange(MAX_CONTAINERS_PER_DEPOSIT, containers.Count - MAX_CONTAINERS_PER_DEPOSIT);
+                }
+
+                // Build a snapshot of all depositable player items (non-hotbar, non-equipped, rows 1-3)
+                var eligibleItems = new List<ItemDrop.ItemData>();
+                foreach (var playerItem in playerInventory.GetAllItems())
+                {
+                    if (playerItem == null) continue;
+                    if (playerItem.m_equipped) continue;
+                    if (playerItem.m_gridPos.y == 0) continue;    // Skip hotbar
+                    if (playerItem.m_gridPos.y > 3) continue;     // Skip extended inventory slots
+                    eligibleItems.Add(playerItem);
+                }
+
+                MegaQoLPlugin.Log($"[QuickDeposit] {containers.Count} containers, {eligibleItems.Count} eligible player items");
+
+                if (eligibleItems.Count == 0)
+                {
+                    player.Message(MessageHud.MessageType.Center, "No depositable items (hotbar & equipped are protected)");
+                    return;
+                }
 
                 int totalDeposited = 0;
-                int chestsSkipped = 0;
                 int chestsEmpty = 0;
                 var affectedChests = new HashSet<Container>();
 
-                // Snapshot the list — FindNearbyContainers returns a shared mutable cache
-                var containers = new List<Container>(nearbyContainers);
-
                 foreach (var container in containers)
                 {
-                    if (container == null) { chestsSkipped++; continue; }
+                    if (container == null) continue;
 
                     var nview = container.GetComponent<ZNetView>();
-                    if (nview == null || !nview.IsValid()) { chestsSkipped++; continue; }
+                    if (nview == null || !nview.IsValid()) continue;
 
                     var chestInventory = container.GetInventory();
-                    if (chestInventory == null) { chestsSkipped++; continue; }
+                    if (chestInventory == null) continue;
 
                     ContainerHelper.EnsureLoaded(container, chestInventory);
 
+                    // Build set of item names already in this chest
                     var chestItemNames = new HashSet<string>();
                     foreach (var chestItem in chestInventory.GetAllItems())
                         if (chestItem != null) chestItemNames.Add(chestItem.m_shared.m_name);
 
-                    if (chestItemNames.Count == 0)
-                    {
-                        chestsEmpty++;
-                        continue;
-                    }
+                    if (chestItemNames.Count == 0) { chestsEmpty++; continue; }
 
+                    // Find matching items to deposit into this chest
                     var toDeposit = new List<ItemDrop.ItemData>();
-                    foreach (var playerItem in playerInventory.GetAllItems())
+                    foreach (var item in eligibleItems)
                     {
-                        if (playerItem == null) continue;
-                        if (playerItem.m_equipped) continue;
-                        // Skip hotbar (top row, y == 0)
-                        if (playerItem.m_gridPos.y == 0) continue;
-                        // Skip AzuExtendedPlayerInventory equipment slots (rows beyond standard 4-row inventory)
-                        if (playerItem.m_gridPos.y > 3) continue;
-                        if (!chestItemNames.Contains(playerItem.m_shared.m_name)) continue;
-                        toDeposit.Add(playerItem);
+                        if (item.m_stack <= 0) continue;
+                        if (!chestItemNames.Contains(item.m_shared.m_name)) continue;
+                        toDeposit.Add(item);
                     }
 
                     if (toDeposit.Count == 0) continue;
 
-                    // Claim ZNetView ownership so Container.Save() can write to ZDO
+                    // Claim ZDO ownership BEFORE modifying the container
                     nview.ClaimOwnership();
 
                     foreach (var item in toDeposit)
                     {
-                        int stackBefore = item.m_stack;
-                        if (chestInventory.AddItem(item))
+                        if (item.m_stack <= 0) continue;
+                        int stack = item.m_stack;
+
+                        // Use the proven Valheim pattern: check CanAddItem first, then AddItem + RemoveItem
+                        if (chestInventory.CanAddItem(item, stack))
                         {
-                            // Fully deposited — remove from player inventory
+                            chestInventory.AddItem(item);
                             playerInventory.RemoveItem(item);
-                            totalDeposited += stackBefore;
+                            totalDeposited += stack;
                             affectedChests.Add(container);
                         }
-                        else
-                        {
-                            // AddItem failed or partial stack — check how much actually moved
-                            int deposited = stackBefore - item.m_stack;
-                            if (deposited > 0)
-                            {
-                                totalDeposited += deposited;
-                                affectedChests.Add(container);
-                            }
-                        }
                     }
                 }
 
-                // Explicitly save affected containers to ZDO and play VFX
+                // Persist changes: write inventory directly to ZDO (bypasses Container.Save() ownership quirks)
                 foreach (var chest in affectedChests)
                 {
-                    try
-                    {
-                        var chestNview = chest.GetComponent<ZNetView>();
-                        if (chestNview != null && chestNview.IsValid() && chestNview.IsOwner())
-                        {
-                            var inv = chest.GetInventory();
-                            if (inv != null)
-                            {
-                                ZPackage pkg = new ZPackage();
-                                inv.Save(pkg);
-                                chestNview.GetZDO().Set(ZDOVars.s_items, pkg.GetBase64());
-                            }
-                        }
-                    }
-                    catch (Exception ex) { MegaQoLPlugin.LogError($"[QuickDeposit] Save error: {ex.Message}"); }
+                    SaveContainerToZDO(chest);
                     ChestVFX.Play(chest.gameObject);
                 }
-
-                // Ensure player inventory UI updates for any partial deposits
-                try { typeof(Inventory).GetMethod("Changed", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(playerInventory, null); }
-                catch { }
 
                 if (affectedChests.Count > 0)
                 {
@@ -883,7 +872,7 @@ namespace MegaQoL
                     ContainerHelper.InvalidateMaterialCache();
                 }
 
-                MegaQoLPlugin.Log($"[QuickDeposit] Result: {totalDeposited} items into {affectedChests.Count} chest(s), {chestsSkipped} skipped, {chestsEmpty} empty");
+                MegaQoLPlugin.Log($"[QuickDeposit] Deposited {totalDeposited} items into {affectedChests.Count} chest(s) ({chestsEmpty} empty)");
 
                 if (totalDeposited > 0)
                     player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
@@ -894,6 +883,30 @@ namespace MegaQoL
             {
                 MegaQoLPlugin.LogError($"[QuickDeposit] Error: {ex}");
                 player.Message(MessageHud.MessageType.Center, "Quick Deposit error — check log");
+            }
+        }
+
+        /// <summary>
+        /// Writes a container's in-memory inventory to its ZDO so changes persist across zone reloads.
+        /// Uses the same format as Container.Save(): Inventory → ZPackage → base64 string → ZDO.
+        /// </summary>
+        public static void SaveContainerToZDO(Container container)
+        {
+            try
+            {
+                var nview = container.GetComponent<ZNetView>();
+                if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
+
+                var inv = container.GetInventory();
+                if (inv == null) return;
+
+                ZPackage pkg = new ZPackage();
+                inv.Save(pkg);
+                nview.GetZDO().Set(ZDOVars.s_items, pkg.GetBase64());
+            }
+            catch (Exception ex)
+            {
+                MegaQoLPlugin.LogError($"[SaveContainerToZDO] Error: {ex.Message}");
             }
         }
     }
