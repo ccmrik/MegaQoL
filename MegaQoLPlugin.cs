@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.11";
+        public const string PluginVersion = "1.5.12";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2158,8 +2158,10 @@ namespace MegaQoL
 
         static Exception Finalizer(Exception __exception)
         {
-            // Swallow NRE from stale/destroyed references inside vanilla code
-            return null;
+            // Only swallow NRE from stale/destroyed references inside vanilla code
+            if (__exception is NullReferenceException)
+                return null;
+            return __exception;
         }
     }
 }
