@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.12";
+        public const string PluginVersion = "1.5.13";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -91,6 +91,9 @@ namespace MegaQoL
         public static ConfigEntry<int> PlantGridLength;
         public static ConfigEntry<bool> GridIgnoreStamina;
         public static ConfigEntry<bool> GridIgnoreDurability;
+
+        // Debug
+        public static ConfigEntry<bool> DebugMode;
 
         // Timers
         private static float _autoRefuelTimer = 0f;
@@ -219,6 +222,10 @@ namespace MegaQoL
             GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
                 "Ignore cultivator durability when grid planting");
 
+            // 14. Debug
+            DebugMode = Config.Bind("14. Debug", "DebugMode", false,
+                "Enable verbose debug logging to BepInEx console/log");
+
             _config = Config;
             SetupConfigWatcher();
 
@@ -273,7 +280,7 @@ namespace MegaQoL
             _harmony?.UnpatchSelf();
         }
 
-        public static void Log(string message) => _logger?.LogInfo(message);
+        public static void Log(string message) { if (DebugMode.Value) _logger?.LogInfo(message); }
         public static void LogWarning(string message) => _logger?.LogWarning(message);
         public static void LogError(string message) => _logger?.LogError(message);
 
