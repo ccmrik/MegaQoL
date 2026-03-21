@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.13";
+        public const string PluginVersion = "1.5.14";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
