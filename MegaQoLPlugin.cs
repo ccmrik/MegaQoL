@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.7.4";
+        public const string PluginVersion = "1.8.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -91,6 +91,11 @@ namespace MegaQoL
         public static ConfigEntry<int> PlantGridLength;
         public static ConfigEntry<bool> GridIgnoreStamina;
         public static ConfigEntry<bool> GridIgnoreDurability;
+
+        // AOE Mining
+        public static ConfigEntry<bool> EnableAOEMining;
+        public static ConfigEntry<KeyCode> AOEMiningKey;
+        public static ConfigEntry<float> AOEMiningRadius;
 
         // Debug
         public static ConfigEntry<bool> DebugMode;
@@ -223,8 +228,16 @@ namespace MegaQoL
             GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
                 "Ignore cultivator durability when grid planting");
 
-            // 14. Debug
-            DebugMode = Config.Bind("14. Debug", "DebugMode", false,
+            // 14. AOE Mining
+            EnableAOEMining = Config.Bind("14. AOE Mining", "Enable", true,
+                "Hold hotkey while mining to instantly destroy nearby rocks/ores in an area");
+            AOEMiningKey = Config.Bind("14. AOE Mining", "Hotkey", KeyCode.LeftShift,
+                "Hold this key while pickaxing to AOE-mine nearby rocks");
+            AOEMiningRadius = Config.Bind("14. AOE Mining", "Radius", 8f,
+                new ConfigDescription("Radius for AOE mining destruction", new AcceptableValueRange<float>(1f, 50f)));
+
+            // 15. Debug
+            DebugMode = Config.Bind("15. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -2245,6 +2258,213 @@ namespace MegaQoL
                 stamina -= rightItem.m_shared.m_attack.m_attackStamina;
                 MassPlantHelper.Ghosts[i].GetComponent<Piece>().SetInvalidPlacementHeightlight(invalid);
             }
+        }
+    }
+
+    // ==================== AOE MINING ====================
+
+    /// <summary>
+    /// Deferred destroy for MineRock5/MineRock — calling Damage() from a Harmony
+    /// Postfix loses RPCs so drops never spawn. Deferring 2 frames runs on a clean
+    /// stack where RPCs process normally.
+    /// </summary>
+    public class DeferredMineRockDestroy : MonoBehaviour
+    {
+        private Vector3 impactPoint;
+        private int frameDelay = 2;
+
+        public void Setup(Vector3 impact)
+        {
+            impactPoint = impact;
+        }
+
+        void Update()
+        {
+            if (frameDelay-- > 0) return;
+
+            try
+            {
+                var rock5 = GetComponent<MineRock5>();
+                if (rock5 != null) { DestroyRock5(rock5); Destroy(this); return; }
+
+                var rock = GetComponent<MineRock>();
+                if (rock != null)
+                {
+                    rock.Damage(CreateDestroyHit(rock.transform.position));
+                    Destroy(this);
+                    return;
+                }
+            }
+            catch { }
+
+            Destroy(this);
+        }
+
+        private void DestroyRock5(MineRock5 rock)
+        {
+            try
+            {
+                var nview = rock.GetComponent<ZNetView>();
+                if (nview != null && nview.IsValid() && !nview.IsOwner())
+                    nview.ClaimOwnership();
+            }
+            catch { }
+
+            var damageAreaMethod = typeof(MineRock5).GetMethod("DamageArea",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (damageAreaMethod == null) return;
+
+            var hitAreasField = typeof(MineRock5).GetField("m_hitAreas",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (hitAreasField == null) return;
+
+            var hitAreas = hitAreasField.GetValue(rock) as System.Collections.IList;
+            if (hitAreas == null || hitAreas.Count == 0) return;
+
+            Type hitAreaType = hitAreas[0].GetType();
+            var colField = hitAreaType.GetField("m_collider",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+            for (int i = 0; i < hitAreas.Count; i++)
+            {
+                var area = hitAreas[i];
+                if (area == null) continue;
+
+                Collider col = colField?.GetValue(area) as Collider;
+                if (col == null || !col.enabled) continue;
+
+                HitData areaHit = CreateDestroyHit(col.bounds.center);
+                try { damageAreaMethod.Invoke(rock, new object[] { i, areaHit }); }
+                catch { }
+            }
+        }
+
+        private static HitData CreateDestroyHit(Vector3 point)
+        {
+            HitData hit = new HitData();
+            hit.m_point = point;
+            hit.m_damage.m_damage = 999999f;
+            hit.m_damage.m_pickaxe = 999999f;
+            hit.m_toolTier = 9999;
+            return hit;
+        }
+    }
+
+    public static class AOEMiningHelper
+    {
+        // Guard against re-entrant AOE calls
+        public static bool IsApplyingAOE = false;
+
+        public static void DestroyNearbyRocks(Vector3 center, float radius, Component origin)
+        {
+            Collider[] nearby = Physics.OverlapSphere(center, radius);
+            HashSet<int> processed = new HashSet<int>();
+
+            foreach (var col in nearby)
+            {
+                if (col == null) continue;
+                var go = col.gameObject;
+
+                // MineRock5 (copper, silver, large deposits) — must defer
+                var rock5 = go.GetComponentInParent<MineRock5>();
+                if (rock5 != null)
+                {
+                    if (!processed.Add(rock5.GetInstanceID())) continue;
+                    if (rock5 == origin) continue;
+                    if (rock5.GetComponent<DeferredMineRockDestroy>() == null)
+                        rock5.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(center);
+                    continue;
+                }
+
+                // MineRock (tin, obsidian, flametal) — must defer
+                var rock = go.GetComponentInParent<MineRock>();
+                if (rock != null)
+                {
+                    if (!processed.Add(rock.GetInstanceID())) continue;
+                    if (rock == origin) continue;
+                    if (rock.GetComponent<DeferredMineRockDestroy>() == null)
+                        rock.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(center);
+                    continue;
+                }
+
+                // Destructible (small surface rocks, stumps, etc.)
+                var dest = go.GetComponentInParent<Destructible>();
+                if (dest != null)
+                {
+                    if (!processed.Add(dest.GetInstanceID())) continue;
+                    if (dest == origin) continue;
+                    HitData h = new HitData();
+                    h.m_point = dest.transform.position;
+                    h.m_damage.m_damage = 999999f;
+                    h.m_damage.m_pickaxe = 999999f;
+                    h.m_toolTier = 9999;
+                    var savedMods = dest.m_damages;
+                    dest.m_damages = new HitData.DamageModifiers();
+                    dest.Damage(h);
+                    dest.m_damages = savedMods;
+                    continue;
+                }
+            }
+        }
+    }
+
+    // Harmony patches: trigger AOE when pickaxe hits a rock with hotkey held
+    [HarmonyPatch(typeof(MineRock5), nameof(MineRock5.Damage))]
+    public static class AOEMining_MineRock5_Patch
+    {
+        private static Vector3 _savedHitPoint;
+
+        [HarmonyPrefix]
+        static void Prefix(HitData hit)
+        {
+            _savedHitPoint = hit.m_point; // MineRock5.Damage rewrites m_point to sub-area center
+        }
+
+        [HarmonyPostfix]
+        static void Postfix(MineRock5 __instance, HitData hit)
+        {
+            if (AOEMiningHelper.IsApplyingAOE) return;
+            if (!MegaQoLPlugin.EnableAOEMining.Value) return;
+            if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
+            if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+
+            AOEMiningHelper.IsApplyingAOE = true;
+            try { AOEMiningHelper.DestroyNearbyRocks(_savedHitPoint, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
+            finally { AOEMiningHelper.IsApplyingAOE = false; }
+        }
+    }
+
+    [HarmonyPatch(typeof(MineRock), nameof(MineRock.Damage))]
+    public static class AOEMining_MineRock_Patch
+    {
+        [HarmonyPostfix]
+        static void Postfix(MineRock __instance, HitData hit)
+        {
+            if (AOEMiningHelper.IsApplyingAOE) return;
+            if (!MegaQoLPlugin.EnableAOEMining.Value) return;
+            if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
+            if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+
+            AOEMiningHelper.IsApplyingAOE = true;
+            try { AOEMiningHelper.DestroyNearbyRocks(hit.m_point, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
+            finally { AOEMiningHelper.IsApplyingAOE = false; }
+        }
+    }
+
+    [HarmonyPatch(typeof(Destructible), nameof(Destructible.Damage))]
+    public static class AOEMining_Destructible_Patch
+    {
+        [HarmonyPostfix]
+        static void Postfix(Destructible __instance, HitData hit)
+        {
+            if (AOEMiningHelper.IsApplyingAOE) return;
+            if (!MegaQoLPlugin.EnableAOEMining.Value) return;
+            if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
+            if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+
+            AOEMiningHelper.IsApplyingAOE = true;
+            try { AOEMiningHelper.DestroyNearbyRocks(hit.m_point, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
+            finally { AOEMiningHelper.IsApplyingAOE = false; }
         }
     }
 
