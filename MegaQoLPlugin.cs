@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.1";
+        public const string PluginVersion = "1.8.2";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2351,6 +2351,17 @@ namespace MegaQoL
     {
         // Guard against re-entrant calls from Destructible.Damage
         public static bool IsApplyingAOE = false;
+
+        // Per-frame lock: only one object gets instant-mined per swing
+        private static int _lastMinedFrame = -1;
+
+        public static bool TryClaimFrame()
+        {
+            int frame = Time.frameCount;
+            if (frame == _lastMinedFrame) return false;
+            _lastMinedFrame = frame;
+            return true;
+        }
     }
 
     // Harmony patches: instant-mine when pickaxe hits with hotkey held
@@ -2364,6 +2375,7 @@ namespace MegaQoL
             if (!MegaQoLPlugin.EnableAOEMining.Value) return;
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+            if (!AOEMiningHelper.TryClaimFrame()) return;
 
             if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
                 __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
@@ -2380,6 +2392,7 @@ namespace MegaQoL
             if (!MegaQoLPlugin.EnableAOEMining.Value) return;
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+            if (!AOEMiningHelper.TryClaimFrame()) return;
 
             if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
                 __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
@@ -2396,6 +2409,7 @@ namespace MegaQoL
             if (!MegaQoLPlugin.EnableAOEMining.Value) return;
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
+            if (!AOEMiningHelper.TryClaimFrame()) return;
 
             // Only destroy objects that respond to pickaxe damage
             if (__instance.m_damages.m_pickaxe == HitData.DamageModifier.Immune ||
