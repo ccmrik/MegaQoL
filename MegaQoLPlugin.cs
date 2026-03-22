@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.6.1";
+        public const string PluginVersion = "1.7.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -76,6 +76,9 @@ namespace MegaQoL
 
         // Rune Build (bypass no-build zones)
         public static ConfigEntry<bool> EnableRuneBuild;
+
+        // No Mist
+        public static ConfigEntry<bool> EnableNoMist;
 
         // MessageHud Smart Queue
         public static ConfigEntry<bool> EnableMessageHudQueue;
@@ -194,28 +197,32 @@ namespace MegaQoL
             EnableRuneBuild = Config.Bind("10. Rune Build", "Enable", true,
                 "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
 
-            // 11. MessageHud Smart Queue
-            EnableMessageHudQueue = Config.Bind("11. MessageHud Smart Queue", "Enable", true,
+            // 11. No Mist
+            EnableNoMist = Config.Bind("11. No Mist", "Enable", true,
+                "Removes all mist particle effects (Mistlands fog, swamp mist, etc)");
+
+            // 12. MessageHud Smart Queue
+            EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
-            // 12. Mass Farming
-            EnableMassFarming = Config.Bind("12. Mass Farming", "Enable", true,
+            // 13. Mass Farming
+            EnableMassFarming = Config.Bind("13. Mass Farming", "Enable", true,
                 "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
-            MassFarmingKey = Config.Bind("12. Mass Farming", "Hotkey", KeyCode.LeftShift,
+            MassFarmingKey = Config.Bind("13. Mass Farming", "Hotkey", KeyCode.LeftShift,
                 "Hold this key to activate mass farming features");
-            MassHarvestRadius = Config.Bind("12. Mass Farming", "HarvestRadius", 5f,
+            MassHarvestRadius = Config.Bind("13. Mass Farming", "HarvestRadius", 5f,
                 new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
-            PlantGridWidth = Config.Bind("12. Mass Farming", "PlantGridWidth", 5,
+            PlantGridWidth = Config.Bind("13. Mass Farming", "PlantGridWidth", 5,
                 new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            PlantGridLength = Config.Bind("12. Mass Farming", "PlantGridLength", 5,
+            PlantGridLength = Config.Bind("13. Mass Farming", "PlantGridLength", 5,
                 new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            GridIgnoreStamina = Config.Bind("12. Mass Farming", "IgnoreStamina", false,
+            GridIgnoreStamina = Config.Bind("13. Mass Farming", "IgnoreStamina", false,
                 "Ignore stamina cost when grid planting extra plants");
-            GridIgnoreDurability = Config.Bind("12. Mass Farming", "IgnoreDurability", false,
+            GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
                 "Ignore cultivator durability when grid planting");
 
-            // 13. Debug
-            DebugMode = Config.Bind("13. Debug", "DebugMode", false,
+            // 14. Debug
+            DebugMode = Config.Bind("14. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -1668,6 +1675,69 @@ namespace MegaQoL
             if (!__result) return;
             if (!MegaQoLPlugin.EnableRuneBuild.Value) return;
             __result = false;
+        }
+    }
+
+    // ==================== NO MIST ====================
+
+    [HarmonyPatch(typeof(MistEmitter), "SetEmit")]
+    public static class MistEmitter_SetEmit_Patch
+    {
+        private static readonly FieldInfo _emitField = AccessTools.Field(typeof(MistEmitter), "m_emit");
+
+        [HarmonyPrefix]
+        public static void Prefix(MistEmitter __instance)
+        {
+            if (MegaQoLPlugin.EnableNoMist.Value)
+                _emitField.SetValue(__instance, false);
+        }
+    }
+
+    [HarmonyPatch(typeof(MistEmitter), "Update")]
+    public static class MistEmitter_Update_Patch
+    {
+        private static readonly FieldInfo _emitField = AccessTools.Field(typeof(MistEmitter), "m_emit");
+
+        [HarmonyPrefix]
+        public static void Prefix(MistEmitter __instance)
+        {
+            if (MegaQoLPlugin.EnableNoMist.Value)
+                _emitField.SetValue(__instance, false);
+        }
+    }
+
+    [HarmonyPatch(typeof(ParticleMist), "Awake")]
+    public static class ParticleMist_Awake_Patch
+    {
+        private static readonly FieldInfo _psField = AccessTools.Field(typeof(ParticleMist), "m_ps");
+
+        [HarmonyPostfix]
+        public static void Postfix(ParticleMist __instance)
+        {
+            if (__instance == null) return;
+            var ps = _psField.GetValue(__instance) as ParticleSystem;
+            if (ps == null) return;
+            if (MegaQoLPlugin.EnableNoMist.Value)
+            {
+                var emission = ps.emission;
+                emission.enabled = false;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ParticleMist), "Update")]
+    public static class ParticleMist_Update_Patch
+    {
+        private static readonly FieldInfo _psField = AccessTools.Field(typeof(ParticleMist), "m_ps");
+
+        [HarmonyPrefix]
+        public static void Prefix(ParticleMist __instance)
+        {
+            if (__instance == null) return;
+            var ps = _psField.GetValue(__instance) as ParticleSystem;
+            if (ps == null) return;
+            var emission = ps.emission;
+            emission.enabled = !MegaQoLPlugin.EnableNoMist.Value;
         }
     }
 
