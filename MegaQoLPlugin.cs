@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.7.1";
+        public const string PluginVersion = "1.7.2";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -106,6 +106,8 @@ namespace MegaQoL
         {
             _logger = Logger;
             _logger.LogInfo($"{PluginName} v{PluginVersion} is loading...");
+
+            CleanObsoleteSections();
 
             // 1. Auto Repair
             EnableAutoRepair = Config.Bind("1. Auto Repair", "Enable", true,
@@ -233,6 +235,42 @@ namespace MegaQoL
 
             _logger.LogInfo($"{PluginName} loaded successfully!");
             _logger.LogInfo($"Live config reloading enabled - edit {Config.ConfigFilePath} and save to apply changes!");
+        }
+
+        private void CleanObsoleteSections()
+        {
+            try
+            {
+                string path = Config.ConfigFilePath;
+                if (!File.Exists(path)) return;
+
+                string[] obsoleteSections = { "3. Ballista Reloader", "8. Ballista Improvements" };
+                string text = File.ReadAllText(path);
+                bool changed = false;
+
+                foreach (string section in obsoleteSections)
+                {
+                    string header = $"[{section}]";
+                    int idx = text.IndexOf(header, StringComparison.OrdinalIgnoreCase);
+                    if (idx < 0) continue;
+
+                    int end = text.IndexOf("\n[", idx + header.Length, StringComparison.Ordinal);
+                    if (end < 0)
+                        text = text.Substring(0, idx).TrimEnd('\r', '\n');
+                    else
+                        text = text.Substring(0, idx) + text.Substring(end + 1);
+
+                    changed = true;
+                    _logger.LogInfo($"Removed obsolete config section: [{section}]");
+                }
+
+                if (changed)
+                    File.WriteAllText(path, text.TrimEnd() + "\n");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Config cleanup failed (non-fatal): {ex.Message}");
+            }
         }
 
         private void SetupConfigWatcher()
