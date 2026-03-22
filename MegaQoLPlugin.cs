@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.0";
+        public const string PluginVersion = "1.8.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -92,10 +92,9 @@ namespace MegaQoL
         public static ConfigEntry<bool> GridIgnoreStamina;
         public static ConfigEntry<bool> GridIgnoreDurability;
 
-        // AOE Mining
+        // Instant Mining
         public static ConfigEntry<bool> EnableAOEMining;
         public static ConfigEntry<KeyCode> AOEMiningKey;
-        public static ConfigEntry<float> AOEMiningRadius;
 
         // Debug
         public static ConfigEntry<bool> DebugMode;
@@ -228,13 +227,11 @@ namespace MegaQoL
             GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
                 "Ignore cultivator durability when grid planting");
 
-            // 14. AOE Mining
-            EnableAOEMining = Config.Bind("14. AOE Mining", "Enable", true,
-                "Hold hotkey while mining to instantly destroy nearby rocks/ores in an area");
-            AOEMiningKey = Config.Bind("14. AOE Mining", "Hotkey", KeyCode.LeftShift,
-                "Hold this key while pickaxing to AOE-mine nearby rocks");
-            AOEMiningRadius = Config.Bind("14. AOE Mining", "Radius", 8f,
-                new ConfigDescription("Radius for AOE mining destruction", new AcceptableValueRange<float>(1f, 50f)));
+            // 14. Instant Mining
+            EnableAOEMining = Config.Bind("14. Instant Mining", "Enable", true,
+                "Hold hotkey while mining to instantly destroy the entire rock/ore deposit in one hit");
+            AOEMiningKey = Config.Bind("14. Instant Mining", "Hotkey", KeyCode.LeftShift,
+                "Hold this key while pickaxing to instant-mine the target");
 
             // 15. Debug
             DebugMode = Config.Bind("15. Debug", "DebugMode", false,
@@ -2352,74 +2349,14 @@ namespace MegaQoL
 
     public static class AOEMiningHelper
     {
-        // Guard against re-entrant AOE calls
+        // Guard against re-entrant calls from Destructible.Damage
         public static bool IsApplyingAOE = false;
-
-        public static void DestroyNearbyRocks(Vector3 center, float radius, Component origin)
-        {
-            Collider[] nearby = Physics.OverlapSphere(center, radius);
-            HashSet<int> processed = new HashSet<int>();
-
-            foreach (var col in nearby)
-            {
-                if (col == null) continue;
-                var go = col.gameObject;
-
-                // MineRock5 (copper, silver, large deposits) — must defer
-                var rock5 = go.GetComponentInParent<MineRock5>();
-                if (rock5 != null)
-                {
-                    if (!processed.Add(rock5.GetInstanceID())) continue;
-                    if (rock5 == origin) continue;
-                    if (rock5.GetComponent<DeferredMineRockDestroy>() == null)
-                        rock5.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(center);
-                    continue;
-                }
-
-                // MineRock (tin, obsidian, flametal) — must defer
-                var rock = go.GetComponentInParent<MineRock>();
-                if (rock != null)
-                {
-                    if (!processed.Add(rock.GetInstanceID())) continue;
-                    if (rock == origin) continue;
-                    if (rock.GetComponent<DeferredMineRockDestroy>() == null)
-                        rock.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(center);
-                    continue;
-                }
-
-                // Destructible (small surface rocks, stumps, etc.)
-                var dest = go.GetComponentInParent<Destructible>();
-                if (dest != null)
-                {
-                    if (!processed.Add(dest.GetInstanceID())) continue;
-                    if (dest == origin) continue;
-                    HitData h = new HitData();
-                    h.m_point = dest.transform.position;
-                    h.m_damage.m_damage = 999999f;
-                    h.m_damage.m_pickaxe = 999999f;
-                    h.m_toolTier = 9999;
-                    var savedMods = dest.m_damages;
-                    dest.m_damages = new HitData.DamageModifiers();
-                    dest.Damage(h);
-                    dest.m_damages = savedMods;
-                    continue;
-                }
-            }
-        }
     }
 
-    // Harmony patches: trigger AOE when pickaxe hits a rock with hotkey held
+    // Harmony patches: instant-mine when pickaxe hits with hotkey held
     [HarmonyPatch(typeof(MineRock5), nameof(MineRock5.Damage))]
     public static class AOEMining_MineRock5_Patch
     {
-        private static Vector3 _savedHitPoint;
-
-        [HarmonyPrefix]
-        static void Prefix(HitData hit)
-        {
-            _savedHitPoint = hit.m_point; // MineRock5.Damage rewrites m_point to sub-area center
-        }
-
         [HarmonyPostfix]
         static void Postfix(MineRock5 __instance, HitData hit)
         {
@@ -2428,9 +2365,8 @@ namespace MegaQoL
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
 
-            AOEMiningHelper.IsApplyingAOE = true;
-            try { AOEMiningHelper.DestroyNearbyRocks(_savedHitPoint, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
-            finally { AOEMiningHelper.IsApplyingAOE = false; }
+            if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
+                __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
         }
     }
 
@@ -2445,9 +2381,8 @@ namespace MegaQoL
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
 
-            AOEMiningHelper.IsApplyingAOE = true;
-            try { AOEMiningHelper.DestroyNearbyRocks(hit.m_point, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
-            finally { AOEMiningHelper.IsApplyingAOE = false; }
+            if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
+                __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
         }
     }
 
@@ -2462,8 +2397,24 @@ namespace MegaQoL
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
 
+            // Only destroy objects that respond to pickaxe damage
+            if (__instance.m_damages.m_pickaxe == HitData.DamageModifier.Immune ||
+                __instance.m_damages.m_pickaxe == HitData.DamageModifier.Ignore)
+                return;
+
             AOEMiningHelper.IsApplyingAOE = true;
-            try { AOEMiningHelper.DestroyNearbyRocks(hit.m_point, MegaQoLPlugin.AOEMiningRadius.Value, __instance); }
+            try
+            {
+                HitData h = new HitData();
+                h.m_point = __instance.transform.position;
+                h.m_damage.m_damage = 999999f;
+                h.m_damage.m_pickaxe = 999999f;
+                h.m_toolTier = 9999;
+                var savedMods = __instance.m_damages;
+                __instance.m_damages = new HitData.DamageModifiers();
+                __instance.Damage(h);
+                __instance.m_damages = savedMods;
+            }
             finally { AOEMiningHelper.IsApplyingAOE = false; }
         }
     }
