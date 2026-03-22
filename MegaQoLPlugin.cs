@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.7.3";
+        public const string PluginVersion = "1.7.4";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -431,6 +431,9 @@ namespace MegaQoL
             {
                 if (wnt == null) continue;
                 if ((position - wnt.transform.position).sqrMagnitude > rangeSq) continue;
+                // Only repair player-placed build pieces, not world objects
+                var piece = wnt.GetComponent<Piece>();
+                if (piece == null || piece.GetCreator() == 0) continue;
                 if (wnt.GetHealthPercentage() >= 1f) continue;
                 wnt.Repair();
             }
