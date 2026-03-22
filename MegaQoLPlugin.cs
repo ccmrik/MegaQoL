@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.7.2";
+        public const string PluginVersion = "1.7.3";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -477,7 +477,7 @@ namespace MegaQoL
             {
                 float maxFuel = fireplace.m_maxFuel;
                 float currentFuel = nview.GetZDO().GetFloat(ZDOVars.s_fuel, 0f);
-                if (currentFuel < maxFuel * 0.8f)
+                if (currentFuel < maxFuel - 0.01f)
                     nview.GetZDO().Set(ZDOVars.s_fuel, maxFuel);
             }
             catch { }
@@ -493,7 +493,7 @@ namespace MegaQoL
             {
                 float maxFuel = station.m_maxFuel;
                 float currentFuel = nview.GetZDO().GetFloat(ZDOVars.s_fuel, 0f);
-                if (currentFuel < maxFuel * 0.8f)
+                if (currentFuel < maxFuel - 0.01f)
                     nview.GetZDO().Set(ZDOVars.s_fuel, maxFuel);
             }
             catch { }

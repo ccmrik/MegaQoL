@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>MegaQoL</AssemblyName>
     <RootNamespace>MegaQoL</RootNamespace>
-    <Version>1.7.2</Version>
+    <Version>1.7.3</Version>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -12,7 +12,7 @@
   <!-- BepInEx and Game References -->
   <PropertyGroup>
     <ValheimPath>C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimPath>
-    <BepInExPath>C:\Users\Rik\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Valheim Min Mods\BepInEx</BepInExPath>
+    <BepInExPath>$(APPDATA)\MegaLoad\profiles\a01aed19fecf3a0d\BepInEx</BepInExPath>
   </PropertyGroup>
 
   <ItemGroup>
