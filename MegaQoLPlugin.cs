@@ -15,9 +15,9 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.2";
+        public const string PluginVersion = "1.8.3";
 
-        private static ManualLogSource _logger;
+        internal static ManualLogSource _logger;
         private static Harmony _harmony;
         private static ConfigFile _config;
         private static FileSystemWatcher _configWatcher;
@@ -2349,9 +2349,6 @@ namespace MegaQoL
 
     public static class AOEMiningHelper
     {
-        // Guard against re-entrant calls from Destructible.Damage
-        public static bool IsApplyingAOE = false;
-
         // Per-frame lock: only one object gets instant-mined per swing
         private static int _lastMinedFrame = -1;
 
@@ -2371,11 +2368,13 @@ namespace MegaQoL
         [HarmonyPostfix]
         static void Postfix(MineRock5 __instance, HitData hit)
         {
-            if (AOEMiningHelper.IsApplyingAOE) return;
             if (!MegaQoLPlugin.EnableAOEMining.Value) return;
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
             if (!AOEMiningHelper.TryClaimFrame()) return;
+
+            if (MegaQoLPlugin.DebugMode.Value)
+                MegaQoLPlugin._logger.LogInfo($"[InstantMine] MineRock5 '{__instance.name}' — attaching deferred destroy");
 
             if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
                 __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
@@ -2388,48 +2387,16 @@ namespace MegaQoL
         [HarmonyPostfix]
         static void Postfix(MineRock __instance, HitData hit)
         {
-            if (AOEMiningHelper.IsApplyingAOE) return;
             if (!MegaQoLPlugin.EnableAOEMining.Value) return;
             if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
             if (hit.m_skill != Skills.SkillType.Pickaxes) return;
             if (!AOEMiningHelper.TryClaimFrame()) return;
+
+            if (MegaQoLPlugin.DebugMode.Value)
+                MegaQoLPlugin._logger.LogInfo($"[InstantMine] MineRock '{__instance.name}' — attaching deferred destroy");
 
             if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
                 __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
-        }
-    }
-
-    [HarmonyPatch(typeof(Destructible), nameof(Destructible.Damage))]
-    public static class AOEMining_Destructible_Patch
-    {
-        [HarmonyPostfix]
-        static void Postfix(Destructible __instance, HitData hit)
-        {
-            if (AOEMiningHelper.IsApplyingAOE) return;
-            if (!MegaQoLPlugin.EnableAOEMining.Value) return;
-            if (!Input.GetKey(MegaQoLPlugin.AOEMiningKey.Value)) return;
-            if (hit.m_skill != Skills.SkillType.Pickaxes) return;
-            if (!AOEMiningHelper.TryClaimFrame()) return;
-
-            // Only destroy objects that respond to pickaxe damage
-            if (__instance.m_damages.m_pickaxe == HitData.DamageModifier.Immune ||
-                __instance.m_damages.m_pickaxe == HitData.DamageModifier.Ignore)
-                return;
-
-            AOEMiningHelper.IsApplyingAOE = true;
-            try
-            {
-                HitData h = new HitData();
-                h.m_point = __instance.transform.position;
-                h.m_damage.m_damage = 999999f;
-                h.m_damage.m_pickaxe = 999999f;
-                h.m_toolTier = 9999;
-                var savedMods = __instance.m_damages;
-                __instance.m_damages = new HitData.DamageModifiers();
-                __instance.Damage(h);
-                __instance.m_damages = savedMods;
-            }
-            finally { AOEMiningHelper.IsApplyingAOE = false; }
         }
     }
 
