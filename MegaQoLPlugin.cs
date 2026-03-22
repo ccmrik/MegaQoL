@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.5.14";
+        public const string PluginVersion = "1.6.0";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -24,7 +24,6 @@ namespace MegaQoL
 
         // Auto Repair
         public static ConfigEntry<bool> EnableAutoRepair;
-        public static ConfigEntry<KeyCode> AutoRepairToggleKey;
         public static ConfigEntry<float> AutoRepairRange;
         public static ConfigEntry<float> AutoRepairInterval;
 
@@ -101,7 +100,6 @@ namespace MegaQoL
         private static float _ballistaAutoReloadTimer = 0f;
         private static float _autoRepairTimer = 0f;
         private static float _chestAutoPickupTimer = 0f;
-        public static bool AutoRepairActive = false;
 
         private void Awake()
         {
@@ -110,11 +108,9 @@ namespace MegaQoL
 
             // 1. Auto Repair
             EnableAutoRepair = Config.Bind("1. Auto Repair", "Enable", true,
-                "Enables auto-repair - press toggle key to automatically repair all nearby build pieces");
-            AutoRepairToggleKey = Config.Bind("1. Auto Repair", "ToggleKey", KeyCode.LeftBracket,
-                "Key to toggle auto-repair on/off (default: Left Bracket '[' key)");
+                "Automatically repair all nearby build pieces when enabled");
             AutoRepairRange = Config.Bind("1. Auto Repair", "Range", 30f,
-                new ConfigDescription("Range for auto-repair in meters", new AcceptableValueRange<float>(1f, 100f)));
+                new ConfigDescription("Range for auto-repair in meters", new AcceptableValueRange<float>(1f, 1000f)));
             AutoRepairInterval = Config.Bind("1. Auto Repair", "Interval", 3f,
                 new ConfigDescription("How often to repair nearby pieces (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
 
@@ -122,7 +118,7 @@ namespace MegaQoL
             EnableAutoRefuel = Config.Bind("2. Refueller", "Enable", true,
                 "Automatically refuel nearby fire sources (campfires, torches, braziers, etc)");
             AutoRefuelRange = Config.Bind("2. Refueller", "Range", 10f,
-                new ConfigDescription("Range for auto-refueling fires in meters", new AcceptableValueRange<float>(0f, 100f)));
+                new ConfigDescription("Range for auto-refueling fires in meters", new AcceptableValueRange<float>(0f, 1000f)));
             AutoRefuelInterval = Config.Bind("2. Refueller", "Interval", 2f,
                 new ConfigDescription("How often to check for fires to refuel (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
 
@@ -130,7 +126,7 @@ namespace MegaQoL
             EnableBallistaAutoReload = Config.Bind("3. Ballista Reloader", "Enable", true,
                 "Automatically reload ballistas from nearby containers");
             BallistaAutoReloadRange = Config.Bind("3. Ballista Reloader", "Range", 10f,
-                new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 100f)));
+                new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 1000f)));
             BallistaAutoReloadInterval = Config.Bind("3. Ballista Reloader", "Interval", 5f,
                 new ConfigDescription("How often to reload ballistas (seconds)", new AcceptableValueRange<float>(1f, 60f)));
             BallistaAutoReloadUseChests = Config.Bind("3. Ballista Reloader", "UseChests", true,
@@ -146,7 +142,7 @@ namespace MegaQoL
             EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
                 "Automatically feeds tamed creatures from nearby containers");
             AutoPetFeederRange = Config.Bind("4. Pet Feeder", "Range", 10f,
-                new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 100f)));
+                new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 1000f)));
             AutoPetFeederInterval = Config.Bind("4. Pet Feeder", "Interval", 10f,
                 new ConfigDescription("How often to feed pets (seconds)", new AcceptableValueRange<float>(1f, 60f)));
             AutoPetFeederUseChests = Config.Bind("4. Pet Feeder", "UseChests", true,
@@ -162,11 +158,11 @@ namespace MegaQoL
             EnablePlayerPickupRadius = Config.Bind("5. Item Management", "EnablePlayerPickupRadius", true,
                 "Enables configurable player item pickup radius");
             PlayerPickupRadius = Config.Bind("5. Item Management", "PlayerPickupRadius", 2f,
-                new ConfigDescription("Player item auto-pickup radius in meters (vanilla = 2)", new AcceptableValueRange<float>(1f, 50f)));
+                new ConfigDescription("Player item auto-pickup radius in meters (vanilla = 2)", new AcceptableValueRange<float>(1f, 1000f)));
             EnableChestAutoPickup = Config.Bind("5. Item Management", "EnableChestAutoPickup", false,
                 "Chests automatically pull in nearby ground items that match their contents");
             ChestAutoPickupRadius = Config.Bind("5. Item Management", "ChestAutoPickupRadius", 10f,
-                new ConfigDescription("Radius around chests to pull in matching ground items", new AcceptableValueRange<float>(1f, 100f)));
+                new ConfigDescription("Radius around chests to pull in matching ground items", new AcceptableValueRange<float>(1f, 1000f)));
             ChestAutoPickupInterval = Config.Bind("5. Item Management", "ChestAutoPickupInterval", 2f,
                 new ConfigDescription("How often chests check for nearby items (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
             EnableQuickDeposit = Config.Bind("5. Item Management", "EnableQuickDeposit", true,
@@ -174,13 +170,13 @@ namespace MegaQoL
             QuickDepositKey = Config.Bind("5. Item Management", "QuickDepositKey", KeyCode.Period,
                 "Hotkey to deposit matching items from inventory into nearby chests");
             QuickDepositRadius = Config.Bind("5. Item Management", "QuickDepositRadius", 10f,
-                new ConfigDescription("Radius to search for chests when quick-depositing", new AcceptableValueRange<float>(1f, 100f)));
+                new ConfigDescription("Radius to search for chests when quick-depositing", new AcceptableValueRange<float>(1f, 1000f)));
 
             // 6. Craft from Containers
             EnableCraftFromContainers = Config.Bind("6. Craft from Containers", "Enable", true,
                 "Allows crafting stations to pull materials from nearby containers");
             CraftFromContainersRadius = Config.Bind("6. Craft from Containers", "Radius", 10f,
-                new ConfigDescription("Radius to search for containers when crafting", new AcceptableValueRange<float>(1f, 100f)));
+                new ConfigDescription("Radius to search for containers when crafting", new AcceptableValueRange<float>(1f, 1000f)));
 
             // 7. Map Teleport
             EnableMapTeleport = Config.Bind("7. Map Teleport", "Enable", true,
@@ -212,7 +208,7 @@ namespace MegaQoL
             MassFarmingKey = Config.Bind("13. Mass Farming", "Hotkey", KeyCode.LeftShift,
                 "Hold this key to activate mass farming features");
             MassHarvestRadius = Config.Bind("13. Mass Farming", "HarvestRadius", 5f,
-                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 50f)));
+                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
             PlantGridWidth = Config.Bind("13. Mass Farming", "PlantGridWidth", 5,
                 new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
             PlantGridLength = Config.Bind("13. Mass Farming", "PlantGridLength", 5,
@@ -308,18 +304,8 @@ namespace MegaQoL
             Player player = Player.m_localPlayer;
             if (player == null) return;
 
-            // Auto-repair toggle
-            if (EnableAutoRepair.Value && Input.GetKeyDown(AutoRepairToggleKey.Value) && !IsUIBlockingInput())
-            {
-                AutoRepairActive = !AutoRepairActive;
-                player.Message(MessageHud.MessageType.Center, AutoRepairActive ? "Auto Repair: ON" : "Auto Repair: OFF");
-            }
-
-            if (AutoRepairActive && !EnableAutoRepair.Value)
-                AutoRepairActive = false;
-
             // Auto-repair nearby build pieces
-            if (AutoRepairActive)
+            if (EnableAutoRepair.Value)
             {
                 _autoRepairTimer += Time.deltaTime;
                 if (_autoRepairTimer >= AutoRepairInterval.Value)
@@ -875,6 +861,7 @@ namespace MegaQoL
         ReinforcedChest,
         BlackMetalChest,
         Barrel,
+        Obliterator,
         Private
     }
 
@@ -928,7 +915,9 @@ namespace MegaQoL
                 return ContainerType.Private;
             if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
                 return ContainerType.BlackMetalChest;
-            if (name.Contains("barrel") || name.Contains("incinerator") || name.Contains("obliterator"))
+            if (name.Contains("incinerator") || name.Contains("obliterator"))
+                return ContainerType.Obliterator;
+            if (name.Contains("barrel"))
                 return ContainerType.Barrel;
             if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
                 !name.Contains("wood") && !name.Contains("blackmetal"))

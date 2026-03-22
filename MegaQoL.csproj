@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>MegaQoL</AssemblyName>
     <RootNamespace>MegaQoL</RootNamespace>
-    <Version>1.5.14</Version>
+    <Version>1.6.0</Version>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -66,11 +66,5 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
-
-  <!-- Auto-copy to BepInEx plugins folder after build -->
-  <Target Name="CopyToPlugins" AfterTargets="Build" Condition="Exists('$(BepInExPath)\plugins')">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExPath)\plugins\MegaQoL" />
-    <Message Text="Copied $(TargetFileName) to BepInEx plugins folder" Importance="High" />
-  </Target>
 
 </Project>
