@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.6.0";
+        public const string PluginVersion = "1.6.1";
 
         private static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -32,7 +32,7 @@ namespace MegaQoL
         public static ConfigEntry<float> AutoRefuelRange;
         public static ConfigEntry<float> AutoRefuelInterval;
 
-        // Ballista Reloader
+        // Ballista
         public static ConfigEntry<bool> EnableBallistaAutoReload;
         public static ConfigEntry<float> BallistaAutoReloadRange;
         public static ConfigEntry<float> BallistaAutoReloadInterval;
@@ -40,6 +40,7 @@ namespace MegaQoL
         public static ConfigEntry<bool> BallistaAutoReloadUseReinforcedChests;
         public static ConfigEntry<bool> BallistaAutoReloadUseBlackMetalChests;
         public static ConfigEntry<bool> BallistaAutoReloadUseBarrels;
+        public static ConfigEntry<bool> EnableBallistaImprovements;
 
         // Pet Feeder
         public static ConfigEntry<bool> EnableAutoPetFeeder;
@@ -66,9 +67,6 @@ namespace MegaQoL
 
         // Map Teleport
         public static ConfigEntry<bool> EnableMapTeleport;
-
-        // Ballista Improvements
-        public static ConfigEntry<bool> EnableBallistaImprovements;
 
         // Plant Anywhere
         public static ConfigEntry<bool> EnablePlantAnywhere;
@@ -122,21 +120,23 @@ namespace MegaQoL
             AutoRefuelInterval = Config.Bind("2. Refueller", "Interval", 2f,
                 new ConfigDescription("How often to check for fires to refuel (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
 
-            // 3. Ballista Reloader
-            EnableBallistaAutoReload = Config.Bind("3. Ballista Reloader", "Enable", true,
+            // 3. Ballista
+            EnableBallistaAutoReload = Config.Bind("3. Ballista", "EnableAutoReload", true,
                 "Automatically reload ballistas from nearby containers");
-            BallistaAutoReloadRange = Config.Bind("3. Ballista Reloader", "Range", 10f,
+            BallistaAutoReloadRange = Config.Bind("3. Ballista", "AutoReloadRange", 10f,
                 new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 1000f)));
-            BallistaAutoReloadInterval = Config.Bind("3. Ballista Reloader", "Interval", 5f,
+            BallistaAutoReloadInterval = Config.Bind("3. Ballista", "AutoReloadInterval", 5f,
                 new ConfigDescription("How often to reload ballistas (seconds)", new AcceptableValueRange<float>(1f, 60f)));
-            BallistaAutoReloadUseChests = Config.Bind("3. Ballista Reloader", "UseChests", true,
+            BallistaAutoReloadUseChests = Config.Bind("3. Ballista", "AutoReloadUseChests", true,
                 "Allow reloading from regular Chests");
-            BallistaAutoReloadUseReinforcedChests = Config.Bind("3. Ballista Reloader", "UseReinforcedChests", true,
+            BallistaAutoReloadUseReinforcedChests = Config.Bind("3. Ballista", "AutoReloadUseReinforcedChests", true,
                 "Allow reloading from Reinforced Chests");
-            BallistaAutoReloadUseBlackMetalChests = Config.Bind("3. Ballista Reloader", "UseBlackMetalChests", true,
+            BallistaAutoReloadUseBlackMetalChests = Config.Bind("3. Ballista", "AutoReloadUseBlackMetalChests", true,
                 "Allow reloading from Black Metal Chests");
-            BallistaAutoReloadUseBarrels = Config.Bind("3. Ballista Reloader", "UseBarrels", true,
+            BallistaAutoReloadUseBarrels = Config.Bind("3. Ballista", "AutoReloadUseBarrels", true,
                 "Allow reloading from Barrels");
+            EnableBallistaImprovements = Config.Bind("3. Ballista", "EnableFriendlyFirePrevention", true,
+                "Prevents ballistas from shooting players or tamed creatures");
 
             // 4. Pet Feeder
             EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
@@ -182,44 +182,40 @@ namespace MegaQoL
             EnableMapTeleport = Config.Bind("7. Map Teleport", "Enable", true,
                 "Enables map teleportation - middle-click on map to teleport to that location");
 
-            // 8. Ballista Improvements
-            EnableBallistaImprovements = Config.Bind("8. Ballista Improvements", "Enable", true,
-                "Enables ballista friendly-fire prevention (won't shoot players or tamed creatures)");
-
-            // 9. Plant Anywhere
-            EnablePlantAnywhere = Config.Bind("9. Plant Anywhere", "Enable", true,
+            // 8. Plant Anywhere
+            EnablePlantAnywhere = Config.Bind("8. Plant Anywhere", "Enable", true,
                 "Enables planting crops in any biome (removes biome restrictions for non-tree plantables)");
 
-            // 10. Build Dust Removal
-            EnableNoBuildDust = Config.Bind("10. Build Dust Removal", "Enable", true,
+            // 9. Build Dust Removal
+            EnableNoBuildDust = Config.Bind("9. Build Dust Removal", "Enable", true,
                 "Removes dust/particle effects when placing build pieces (keeps sound effects)");
 
-            // 10b. Rune Build
-            EnableRuneBuild = Config.Bind("10b. Rune Build", "Enable", true,
+            // 10. Rune Build
+            EnableRuneBuild = Config.Bind("10. Rune Build", "Enable", true,
                 "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
 
-            // 12. MessageHud Smart Queue
-            EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
+            // 11. MessageHud Smart Queue
+            EnableMessageHudQueue = Config.Bind("11. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
-            // 13. Mass Farming
-            EnableMassFarming = Config.Bind("13. Mass Farming", "Enable", true,
+            // 12. Mass Farming
+            EnableMassFarming = Config.Bind("12. Mass Farming", "Enable", true,
                 "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
-            MassFarmingKey = Config.Bind("13. Mass Farming", "Hotkey", KeyCode.LeftShift,
+            MassFarmingKey = Config.Bind("12. Mass Farming", "Hotkey", KeyCode.LeftShift,
                 "Hold this key to activate mass farming features");
-            MassHarvestRadius = Config.Bind("13. Mass Farming", "HarvestRadius", 5f,
+            MassHarvestRadius = Config.Bind("12. Mass Farming", "HarvestRadius", 5f,
                 new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
-            PlantGridWidth = Config.Bind("13. Mass Farming", "PlantGridWidth", 5,
+            PlantGridWidth = Config.Bind("12. Mass Farming", "PlantGridWidth", 5,
                 new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            PlantGridLength = Config.Bind("13. Mass Farming", "PlantGridLength", 5,
+            PlantGridLength = Config.Bind("12. Mass Farming", "PlantGridLength", 5,
                 new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            GridIgnoreStamina = Config.Bind("13. Mass Farming", "IgnoreStamina", false,
+            GridIgnoreStamina = Config.Bind("12. Mass Farming", "IgnoreStamina", false,
                 "Ignore stamina cost when grid planting extra plants");
-            GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
+            GridIgnoreDurability = Config.Bind("12. Mass Farming", "IgnoreDurability", false,
                 "Ignore cultivator durability when grid planting");
 
-            // 14. Debug
-            DebugMode = Config.Bind("14. Debug", "DebugMode", false,
+            // 13. Debug
+            DebugMode = Config.Bind("13. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
