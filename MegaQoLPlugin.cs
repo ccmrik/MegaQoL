@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.4";
+        public const string PluginVersion = "1.8.5";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -187,51 +187,51 @@ namespace MegaQoL
             CraftFromContainersRadius = Config.Bind("6. Craft from Containers", "Radius", 10f,
                 new ConfigDescription("Radius to search for containers when crafting", new AcceptableValueRange<float>(1f, 1000f)));
 
-            // 7. Map Teleport
-            EnableMapTeleport = Config.Bind("7. Map Teleport", "Enable", true,
-                "Enables map teleportation - middle-click on map to teleport to that location");
+            // 7. Mass Farming
+            EnableMassFarming = Config.Bind("7. Mass Farming", "Enable", true,
+                "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
+            MassFarmingKey = Config.Bind("7. Mass Farming", "Hotkey", KeyCode.LeftShift,
+                "Hold this key to activate mass farming features");
+            MassHarvestRadius = Config.Bind("7. Mass Farming", "HarvestRadius", 5f,
+                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
+            PlantGridWidth = Config.Bind("7. Mass Farming", "PlantGridWidth", 5,
+                new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
+            PlantGridLength = Config.Bind("7. Mass Farming", "PlantGridLength", 5,
+                new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
+            GridIgnoreStamina = Config.Bind("7. Mass Farming", "IgnoreStamina", false,
+                "Ignore stamina cost when grid planting extra plants");
+            GridIgnoreDurability = Config.Bind("7. Mass Farming", "IgnoreDurability", false,
+                "Ignore cultivator durability when grid planting");
 
             // 8. Plant Anywhere
             EnablePlantAnywhere = Config.Bind("8. Plant Anywhere", "Enable", true,
                 "Enables planting crops in any biome (removes biome restrictions for non-tree plantables)");
 
-            // 9. Build Dust Removal
-            EnableNoBuildDust = Config.Bind("9. Build Dust Removal", "Enable", true,
+            // 9. Instant Mining
+            EnableAOEMining = Config.Bind("9. Instant Mining", "Enable", true,
+                "Hold hotkey while mining to instantly destroy the entire rock/ore deposit in one hit");
+            AOEMiningKey = Config.Bind("9. Instant Mining", "Hotkey", KeyCode.LeftShift,
+                "Hold this key while pickaxing to instant-mine the target");
+
+            // 10. Build Dust Removal
+            EnableNoBuildDust = Config.Bind("10. Build Dust Removal", "Enable", true,
                 "Removes dust/particle effects when placing build pieces (keeps sound effects)");
 
-            // 10. Rune Build
-            EnableRuneBuild = Config.Bind("10. Rune Build", "Enable", true,
+            // 11. Rune Build
+            EnableRuneBuild = Config.Bind("11. Rune Build", "Enable", true,
                 "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
 
-            // 11. No Mist
-            EnableNoMist = Config.Bind("11. No Mist", "Enable", true,
+            // 12. Map Teleport
+            EnableMapTeleport = Config.Bind("12. Map Teleport", "Enable", true,
+                "Enables map teleportation - middle-click on map to teleport to that location");
+
+            // 13. No Mist
+            EnableNoMist = Config.Bind("13. No Mist", "Enable", true,
                 "Removes all mist particle effects (Mistlands fog, swamp mist, etc)");
 
-            // 12. MessageHud Smart Queue
-            EnableMessageHudQueue = Config.Bind("12. MessageHud Smart Queue", "Enable", true,
+            // 14. MessageHud Smart Queue
+            EnableMessageHudQueue = Config.Bind("14. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
-
-            // 13. Mass Farming
-            EnableMassFarming = Config.Bind("13. Mass Farming", "Enable", true,
-                "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
-            MassFarmingKey = Config.Bind("13. Mass Farming", "Hotkey", KeyCode.LeftShift,
-                "Hold this key to activate mass farming features");
-            MassHarvestRadius = Config.Bind("13. Mass Farming", "HarvestRadius", 5f,
-                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
-            PlantGridWidth = Config.Bind("13. Mass Farming", "PlantGridWidth", 5,
-                new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            PlantGridLength = Config.Bind("13. Mass Farming", "PlantGridLength", 5,
-                new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            GridIgnoreStamina = Config.Bind("13. Mass Farming", "IgnoreStamina", false,
-                "Ignore stamina cost when grid planting extra plants");
-            GridIgnoreDurability = Config.Bind("13. Mass Farming", "IgnoreDurability", false,
-                "Ignore cultivator durability when grid planting");
-
-            // 14. Instant Mining
-            EnableAOEMining = Config.Bind("14. Instant Mining", "Enable", true,
-                "Hold hotkey while mining to instantly destroy the entire rock/ore deposit in one hit");
-            AOEMiningKey = Config.Bind("14. Instant Mining", "Hotkey", KeyCode.LeftShift,
-                "Hold this key while pickaxing to instant-mine the target");
 
             // 15. Debug
             DebugMode = Config.Bind("15. Debug", "DebugMode", false,
@@ -254,7 +254,7 @@ namespace MegaQoL
                 string path = Config.ConfigFilePath;
                 if (!File.Exists(path)) return;
 
-                string[] obsoleteSections = { "3. Ballista Reloader", "8. Ballista Improvements" };
+                string[] obsoleteSections = { "3. Ballista Reloader", "8. Ballista Improvements", "7. Map Teleport", "9. Build Dust Removal", "10. Rune Build", "11. No Mist", "12. MessageHud Smart Queue", "13. Mass Farming", "14. Instant Mining" };
                 string text = File.ReadAllText(path);
                 bool changed = false;
 
