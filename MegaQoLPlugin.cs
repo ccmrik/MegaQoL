@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.7";
+        public const string PluginVersion = "1.8.8";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -259,6 +259,7 @@ namespace MegaQoL
                 // Delete truly obsolete sections
                 changed |= MigrateCfgSection(ref text, "3. Ballista Reloader", null);
                 changed |= MigrateCfgSection(ref text, "8. Ballista Improvements", null);
+                changed |= MigrateCfgSection(ref text, "10b. Rune Build", null);
 
                 // Migrate renumbered sections from v1.8.4 → v1.8.5
                 changed |= MigrateCfgSection(ref text, "7. Map Teleport", "12. Map Teleport");
@@ -268,6 +269,9 @@ namespace MegaQoL
                 changed |= MigrateCfgSection(ref text, "12. MessageHud Smart Queue", "14. MessageHud Smart Queue");
                 changed |= MigrateCfgSection(ref text, "13. Mass Farming", "7. Mass Farming");
                 changed |= MigrateCfgSection(ref text, "14. Instant Mining", "9. Instant Mining");
+
+                // v1.8.7 → v1.8.8: clean up stale Debug renumber
+                changed |= MigrateCfgSection(ref text, "14. Debug", "15. Debug");
 
                 if (changed)
                     File.WriteAllText(configPath, text.TrimEnd() + "\n");
