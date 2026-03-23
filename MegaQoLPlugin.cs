@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.3";
+        public const string PluginVersion = "1.8.4";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1453,6 +1453,8 @@ namespace MegaQoL
     [HarmonyPatch(typeof(Minimap), "OnMapMiddleClick")]
     public static class Minimap_OnMapMiddleClick_Teleport_Patch
     {
+        private static MethodInfo _screenToWorldMethod;
+
         [HarmonyPostfix]
         public static void Postfix(Minimap __instance)
         {
@@ -1463,12 +1465,13 @@ namespace MegaQoL
 
             try
             {
-                var screenToWorldMethod = typeof(Minimap).GetMethod("ScreenToWorldPoint",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (screenToWorldMethod == null) return;
+                if (_screenToWorldMethod == null)
+                    _screenToWorldMethod = typeof(Minimap).GetMethod("ScreenToWorldPoint",
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_screenToWorldMethod == null) return;
 
                 Vector3 mousePos = Input.mousePosition;
-                Vector3 worldPos = (Vector3)screenToWorldMethod.Invoke(__instance, new object[] { mousePos });
+                Vector3 worldPos = (Vector3)_screenToWorldMethod.Invoke(__instance, new object[] { mousePos });
 
                 float groundHeight = ZoneSystem.instance.GetGroundHeight(worldPos);
                 if (groundHeight > worldPos.y)
@@ -1799,6 +1802,7 @@ namespace MegaQoL
     {
         private static FieldInfo _queueField = typeof(MessageHud).GetField("m_msgQeue", BindingFlags.NonPublic | BindingFlags.Instance);
         private static FieldInfo _timerField = typeof(MessageHud).GetField("m_msgQueueTimer", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static MethodInfo _clearMethod;
 
         [HarmonyPrefix]
         public static void Prefix(MessageHud __instance, MessageHud.MessageType type)
@@ -1810,9 +1814,10 @@ namespace MegaQoL
             var queue = _queueField.GetValue(__instance);
             if (queue != null)
             {
-                var clearMethod = queue.GetType().GetMethod("Clear");
-                if (clearMethod != null)
-                    clearMethod.Invoke(queue, null);
+                if (_clearMethod == null)
+                    _clearMethod = queue.GetType().GetMethod("Clear");
+                if (_clearMethod != null)
+                    _clearMethod.Invoke(queue, null);
             }
 
             if (_timerField != null)
@@ -2267,6 +2272,10 @@ namespace MegaQoL
     /// </summary>
     public class DeferredMineRockDestroy : MonoBehaviour
     {
+        private static MethodInfo _damageAreaMethod;
+        private static FieldInfo _hitAreasField;
+        private static FieldInfo _colliderField;
+
         private Vector3 impactPoint;
         private int frameDelay = 2;
 
@@ -2307,31 +2316,36 @@ namespace MegaQoL
             }
             catch { }
 
-            var damageAreaMethod = typeof(MineRock5).GetMethod("DamageArea",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            if (damageAreaMethod == null) return;
+            if (_damageAreaMethod == null)
+                _damageAreaMethod = typeof(MineRock5).GetMethod("DamageArea",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_damageAreaMethod == null) return;
 
-            var hitAreasField = typeof(MineRock5).GetField("m_hitAreas",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            if (hitAreasField == null) return;
+            if (_hitAreasField == null)
+                _hitAreasField = typeof(MineRock5).GetField("m_hitAreas",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_hitAreasField == null) return;
 
-            var hitAreas = hitAreasField.GetValue(rock) as System.Collections.IList;
+            var hitAreas = _hitAreasField.GetValue(rock) as System.Collections.IList;
             if (hitAreas == null || hitAreas.Count == 0) return;
 
-            Type hitAreaType = hitAreas[0].GetType();
-            var colField = hitAreaType.GetField("m_collider",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_colliderField == null)
+            {
+                Type hitAreaType = hitAreas[0].GetType();
+                _colliderField = hitAreaType.GetField("m_collider",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
 
             for (int i = 0; i < hitAreas.Count; i++)
             {
                 var area = hitAreas[i];
                 if (area == null) continue;
 
-                Collider col = colField?.GetValue(area) as Collider;
+                Collider col = _colliderField?.GetValue(area) as Collider;
                 if (col == null || !col.enabled) continue;
 
                 HitData areaHit = CreateDestroyHit(col.bounds.center);
-                try { damageAreaMethod.Invoke(rock, new object[] { i, areaHit }); }
+                try { _damageAreaMethod.Invoke(rock, new object[] { i, areaHit }); }
                 catch { }
             }
         }
