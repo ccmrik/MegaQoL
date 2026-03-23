@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.5";
+        public const string PluginVersion = "1.8.6";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -111,7 +111,7 @@ namespace MegaQoL
             _logger = Logger;
             _logger.LogInfo($"{PluginName} v{PluginVersion} is loading...");
 
-            CleanObsoleteSections();
+            MigrateConfig(Config.ConfigFilePath);
 
             // 1. Auto Repair
             EnableAutoRepair = Config.Bind("1. Auto Repair", "Enable", true,
@@ -247,40 +247,53 @@ namespace MegaQoL
             _logger.LogInfo($"Live config reloading enabled - edit {Config.ConfigFilePath} and save to apply changes!");
         }
 
-        private void CleanObsoleteSections()
+        private static void MigrateConfig(string configPath)
         {
             try
             {
-                string path = Config.ConfigFilePath;
-                if (!File.Exists(path)) return;
-
-                string[] obsoleteSections = { "3. Ballista Reloader", "8. Ballista Improvements", "7. Map Teleport", "9. Build Dust Removal", "10. Rune Build", "11. No Mist", "12. MessageHud Smart Queue", "13. Mass Farming", "14. Instant Mining" };
-                string text = File.ReadAllText(path);
+                if (!File.Exists(configPath)) return;
+                string text = File.ReadAllText(configPath);
                 bool changed = false;
 
-                foreach (string section in obsoleteSections)
-                {
-                    string header = $"[{section}]";
-                    int idx = text.IndexOf(header, StringComparison.OrdinalIgnoreCase);
-                    if (idx < 0) continue;
+                // Delete truly obsolete sections
+                changed |= MigrateCfgSection(ref text, "3. Ballista Reloader", null);
+                changed |= MigrateCfgSection(ref text, "8. Ballista Improvements", null);
 
-                    int end = text.IndexOf("\n[", idx + header.Length, StringComparison.Ordinal);
-                    if (end < 0)
-                        text = text.Substring(0, idx).TrimEnd('\r', '\n');
-                    else
-                        text = text.Substring(0, idx) + text.Substring(end + 1);
-
-                    changed = true;
-                    _logger.LogInfo($"Removed obsolete config section: [{section}]");
-                }
+                // Migrate renumbered sections from v1.8.4 → v1.8.5
+                changed |= MigrateCfgSection(ref text, "7. Map Teleport", "12. Map Teleport");
+                changed |= MigrateCfgSection(ref text, "9. Build Dust Removal", "10. Build Dust Removal");
+                changed |= MigrateCfgSection(ref text, "10. Rune Build", "11. Rune Build");
+                changed |= MigrateCfgSection(ref text, "11. No Mist", "13. No Mist");
+                changed |= MigrateCfgSection(ref text, "12. MessageHud Smart Queue", "14. MessageHud Smart Queue");
+                changed |= MigrateCfgSection(ref text, "13. Mass Farming", "7. Mass Farming");
+                changed |= MigrateCfgSection(ref text, "14. Instant Mining", "9. Instant Mining");
 
                 if (changed)
-                    File.WriteAllText(path, text.TrimEnd() + "\n");
+                    File.WriteAllText(configPath, text.TrimEnd() + "\n");
             }
-            catch (Exception ex)
+            catch { }
+        }
+
+        private static bool MigrateCfgSection(ref string text, string oldName, string newName)
+        {
+            string oldHeader = "[" + oldName + "]";
+            int idx = text.IndexOf(oldHeader, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+
+            int sectionEnd = text.IndexOf("\n[", idx + oldHeader.Length, StringComparison.Ordinal);
+
+            if (newName == null || text.IndexOf("[" + newName + "]", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                _logger.LogWarning($"Config cleanup failed (non-fatal): {ex.Message}");
+                if (sectionEnd < 0)
+                    text = text.Substring(0, idx).TrimEnd('\r', '\n');
+                else
+                    text = text.Substring(0, idx) + text.Substring(sectionEnd + 1);
             }
+            else
+            {
+                text = text.Remove(idx, oldHeader.Length).Insert(idx, "[" + newName + "]");
+            }
+            return true;
         }
 
         private void SetupConfigWatcher()
