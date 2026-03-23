@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.6";
+        public const string PluginVersion = "1.8.7";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -112,6 +112,7 @@ namespace MegaQoL
             _logger.LogInfo($"{PluginName} v{PluginVersion} is loading...");
 
             MigrateConfig(Config.ConfigFilePath);
+            Config.Reload();
 
             // 1. Auto Repair
             EnableAutoRepair = Config.Bind("1. Auto Repair", "Enable", true,
