@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.8";
+        public const string PluginVersion = "1.8.9";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -750,11 +750,40 @@ namespace MegaQoL
     {
         private static readonly Collider[] _overlapBuffer = new Collider[128];
         private const int MAX_CONTAINERS_PER_PICKUP = 32;
+        private static int _itemLayerMask = -1;
+
+        private static int GetItemLayerMask()
+        {
+            if (_itemLayerMask == -1)
+                _itemLayerMask = LayerMask.GetMask("item");
+            return _itemLayerMask;
+        }
+
+        private static int GetFreeSpaceForItem(Inventory inventory, ItemDrop.ItemData itemData)
+        {
+            int freeSpace = 0;
+            int maxStack = itemData.m_shared.m_maxStackSize;
+            string itemName = itemData.m_shared.m_name;
+
+            foreach (var item in inventory.GetAllItems())
+            {
+                if (item != null && item.m_shared.m_name == itemName)
+                    freeSpace += maxStack - item.m_stack;
+            }
+
+            int totalSlots = inventory.GetWidth() * inventory.GetHeight();
+            int usedSlots = inventory.GetAllItems().Count;
+            freeSpace += Mathf.Max(0, totalSlots - usedSlots) * maxStack;
+
+            return freeSpace;
+        }
 
         public static void PickupNearbyItems(Vector3 playerPosition, float radius)
         {
             var nearbyContainers = ContainerHelper.FindNearbyContainers(playerPosition, radius);
             int count = Mathf.Min(nearbyContainers.Count, MAX_CONTAINERS_PER_PICKUP);
+
+            MegaQoLPlugin.Log($"[ChestAutoPickup] Scanning {count} containers within {radius}m");
 
             for (int c = 0; c < count; c++)
             {
@@ -775,27 +804,58 @@ namespace MegaQoL
                 if (existingItems.Count == 0) continue;
 
                 bool containerModified = false;
-                // Use a tighter radius (capped at 5m per container) for the physics query
                 float pickupRange = Mathf.Min(radius, 5f);
-                int dropCount = Physics.OverlapSphereNonAlloc(container.transform.position, pickupRange, _overlapBuffer);
+                int dropCount = Physics.OverlapSphereNonAlloc(
+                    container.transform.position, pickupRange, _overlapBuffer, GetItemLayerMask());
+
+                MegaQoLPlugin.Log($"[ChestAutoPickup] '{container.gameObject.name}': {existingItems.Count} item types, {dropCount} nearby drops");
+
+                var processedDrops = new HashSet<int>();
+
                 for (int j = 0; j < dropCount; j++)
                 {
                     var drop = _overlapBuffer[j].GetComponentInParent<ItemDrop>();
                     if (drop == null || drop.m_itemData == null) continue;
-                    if (!drop.m_autoPickup) continue;
+
+                    int dropId = drop.GetInstanceID();
+                    if (processedDrops.Contains(dropId)) continue;
+                    processedDrops.Add(dropId);
+
                     if (!existingItems.Contains(drop.m_itemData.m_shared.m_name)) continue;
 
-                    if (inventory.CanAddItem(drop.m_itemData, drop.m_itemData.m_stack))
+                    int freeSpace = GetFreeSpaceForItem(inventory, drop.m_itemData);
+                    if (freeSpace <= 0)
                     {
-                        if (!containerModified)
-                        {
-                            containerNview.ClaimOwnership();
-                            containerModified = true;
-                        }
+                        MegaQoLPlugin.Log($"[ChestAutoPickup] No room for '{drop.m_itemData.m_shared.m_name}' x{drop.m_itemData.m_stack}");
+                        continue;
+                    }
 
+                    int pickupAmount = Mathf.Min(freeSpace, drop.m_itemData.m_stack);
+                    bool fullPickup = pickupAmount >= drop.m_itemData.m_stack;
+
+                    if (!containerModified)
+                    {
+                        containerNview.ClaimOwnership();
+                        containerModified = true;
+                    }
+
+                    if (fullPickup)
+                    {
                         inventory.AddItem(drop.m_itemData);
-                        ChestVFX.Play(container.gameObject);
+                    }
+                    else
+                    {
+                        var partialData = drop.m_itemData.Clone();
+                        partialData.m_stack = pickupAmount;
+                        inventory.AddItem(partialData);
+                        drop.m_itemData.m_stack -= pickupAmount;
+                    }
 
+                    ChestVFX.Play(container.gameObject);
+                    MegaQoLPlugin.Log($"[ChestAutoPickup] Picked up {pickupAmount}x '{drop.m_itemData.m_shared.m_name}' ({(fullPickup ? "full" : "partial")})");
+
+                    if (fullPickup)
+                    {
                         var nview = drop.GetComponent<ZNetView>();
                         if (nview != null && nview.IsValid())
                         {
