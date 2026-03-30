@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.3";
+        public const string PluginVersion = "1.9.4";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1611,7 +1611,14 @@ namespace MegaQoL
             if (MegaQoLPlugin.BallistaFireRate.Value != (float)MegaQoLPlugin.BallistaFireRate.DefaultValue)
                 __instance.m_attackCooldown = MegaQoLPlugin.BallistaFireRate.Value;
             if (MegaQoLPlugin.BallistaAimAccuracy.Value != (float)MegaQoLPlugin.BallistaAimAccuracy.DefaultValue)
-                __instance.m_shootWhenAimDiff = MegaQoLPlugin.BallistaAimAccuracy.Value;
+            {
+                // Config is in degrees, but m_shootWhenAimDiff is a Quaternion.Dot
+                // threshold (0-1). Quaternion.Dot = cos(halfAngle), so convert:
+                float degreesVal = MegaQoLPlugin.BallistaAimAccuracy.Value;
+                float dotThreshold = Mathf.Cos(degreesVal * Mathf.Deg2Rad * 0.5f);
+                __instance.m_shootWhenAimDiff = dotThreshold;
+                MegaQoLPlugin.Log($"[Ballista] AimAccuracy: {degreesVal} deg → dot threshold {dotThreshold:F6}");
+            }
             if (MegaQoLPlugin.BallistaPrediction.Value != (float)MegaQoLPlugin.BallistaPrediction.DefaultValue)
                 __instance.m_predictionModifier = MegaQoLPlugin.BallistaPrediction.Value;
             if (MegaQoLPlugin.BallistaTurnRate.Value != (float)MegaQoLPlugin.BallistaTurnRate.DefaultValue)
