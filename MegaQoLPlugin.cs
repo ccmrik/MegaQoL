@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.7";
+        public const string PluginVersion = "1.9.8";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -155,8 +155,8 @@ namespace MegaQoL
                 "Prevents ballistas from shooting players or tamed creatures");
             BallistaVelocityMultiplier = Config.Bind("3. Ballista", "VelocityMultiplier", 1f,
                 new ConfigDescription("Projectile speed multiplier (1 = vanilla, higher = faster bolts, auto-adjusts prediction)", new AcceptableValueRange<float>(1f, 10f)));
-            BallistaFireRate = Config.Bind("3. Ballista", "FireRate", 2f,
-                new ConfigDescription("Shots per second (higher = faster, 2 = 2/sec, 10 = 10/sec)", new AcceptableValueRange<float>(2f, 10f)));
+            BallistaFireRate = Config.Bind("3. Ballista", "FireRate", 1f,
+                new ConfigDescription("Fire rate multiplier (1 = vanilla 1 shot/2sec, 10 = 10x faster)", new AcceptableValueRange<float>(1f, 10f)));
             BallistaAimAccuracy = Config.Bind("3. Ballista", "AimAccuracy", 1f,
                 new ConfigDescription("Accuracy multiplier (1 = vanilla, 10 = 10x tighter aim)", new AcceptableValueRange<float>(1f, 10f)));
             BallistaPrediction = Config.Bind("3. Ballista", "Prediction", 2f,
@@ -371,7 +371,7 @@ namespace MegaQoL
                 System.Threading.Thread.Sleep(100);
                 _config.Reload();
                 _logger.LogInfo("Config reloaded! Changes applied.");
-                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}/sec, AimAccuracy={BallistaAimAccuracy.Value}x, Prediction={BallistaPrediction.Value}, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={BallistaVelocityMultiplier.Value}x");
+                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={BallistaAimAccuracy.Value}x, Prediction={BallistaPrediction.Value}, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={BallistaVelocityMultiplier.Value}x");
 
                 if (Player.m_localPlayer != null)
                     Player.m_localPlayer.Message(MessageHud.MessageType.Center, "MegaQoL Config Reloaded!");
@@ -1776,8 +1776,8 @@ namespace MegaQoL
 
         private static void ApplyConfigValues(Turret turret)
         {
-            // FireRate: shots per second → cooldown (2/sec = 0.5s, 10/sec = 0.1s)
-            turret.m_attackCooldown = 1f / MegaQoLPlugin.BallistaFireRate.Value;
+            // FireRate: multiplier divides vanilla cooldown (1 = 2s, 10 = 0.2s)
+            turret.m_attackCooldown = Turret_Awake_Patch.VanillaAttackCooldown / MegaQoLPlugin.BallistaFireRate.Value;
 
             // AimAccuracy: multiplier divides vanilla aim angle (1 = vanilla, 10 = 10x tighter)
             float vanillaAngleDeg = 2f * Mathf.Acos(Turret_Awake_Patch.VanillaShootWhenAimDiff) * Mathf.Rad2Deg;
