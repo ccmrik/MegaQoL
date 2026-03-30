@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.8";
+        public const string PluginVersion = "1.9.9";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -44,7 +44,6 @@ namespace MegaQoL
         public static ConfigEntry<float> BallistaVelocityMultiplier;
         public static ConfigEntry<float> BallistaFireRate;
         public static ConfigEntry<float> BallistaAimAccuracy;
-        public static ConfigEntry<float> BallistaPrediction;
         public static ConfigEntry<float> BallistaTurnRate;
         public static ConfigEntry<float> BallistaRange;
 
@@ -159,8 +158,6 @@ namespace MegaQoL
                 new ConfigDescription("Fire rate multiplier (1 = vanilla 1 shot/2sec, 10 = 10x faster)", new AcceptableValueRange<float>(1f, 10f)));
             BallistaAimAccuracy = Config.Bind("3. Ballista", "AimAccuracy", 1f,
                 new ConfigDescription("Accuracy multiplier (1 = vanilla, 10 = 10x tighter aim)", new AcceptableValueRange<float>(1f, 10f)));
-            BallistaPrediction = Config.Bind("3. Ballista", "Prediction", 2f,
-                new ConfigDescription("Target-lead prediction multiplier (higher = more lead, vanilla = 2)", new AcceptableValueRange<float>(2f, 5f)));
             BallistaTurnRate = Config.Bind("3. Ballista", "TurnRate", 45f,
                 new ConfigDescription("Turret rotation speed deg/sec (higher = faster tracking, vanilla = 45)", new AcceptableValueRange<float>(45f, 500f)));
             BallistaRange = Config.Bind("3. Ballista", "Range", 30f,
@@ -293,6 +290,8 @@ namespace MegaQoL
 
                 // v1.9.6: remove obsolete FiringVelocity key (replaced by VelocityMultiplier)
                 changed |= MigrateCfgKey(ref text, "FiringVelocity");
+                // v1.9.9: remove Prediction key (now auto-computed from velocity)
+                changed |= MigrateCfgKey(ref text, "Prediction");
 
                 if (changed)
                     File.WriteAllText(configPath, text.TrimEnd() + "\n");
@@ -371,7 +370,7 @@ namespace MegaQoL
                 System.Threading.Thread.Sleep(100);
                 _config.Reload();
                 _logger.LogInfo("Config reloaded! Changes applied.");
-                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={BallistaAimAccuracy.Value}x, Prediction={BallistaPrediction.Value}, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={BallistaVelocityMultiplier.Value}x");
+                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={BallistaAimAccuracy.Value}x, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={BallistaVelocityMultiplier.Value}x, AutoPrediction={Turret_Awake_Patch.VanillaPredictionModifier / BallistaVelocityMultiplier.Value:F3}");
 
                 if (Player.m_localPlayer != null)
                     Player.m_localPlayer.Message(MessageHud.MessageType.Center, "MegaQoL Config Reloaded!");
@@ -1787,12 +1786,13 @@ namespace MegaQoL
             turret.m_turnRate = MegaQoLPlugin.BallistaTurnRate.Value;
             turret.m_viewDistance = MegaQoLPlugin.BallistaRange.Value;
 
-            // Auto-compensate prediction for velocity multiplier.
-            // Turret calculates lead using: target.vel * (dist / ammoVel) * predictionModifier
-            // But we multiply bolt speed by velMultiplier in the postfix, so actual flight time
-            // is (dist / ammoVel) / velMultiplier. Compensate by dividing prediction accordingly.
+            // Auto-compute prediction from velocity multiplier.
+            // Turret calculates lead: target.vel * (dist / ammoVel) * predictionModifier
+            // We multiply bolt speed by velMultiplier in the postfix, so actual flight time
+            // is (dist / ammoVel) / velMultiplier. Use vanilla prediction / velMultiplier
+            // to give vanilla-equivalent lead behavior at any bolt speed.
             float velMultiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
-            turret.m_predictionModifier = MegaQoLPlugin.BallistaPrediction.Value / velMultiplier;
+            turret.m_predictionModifier = Turret_Awake_Patch.VanillaPredictionModifier / velMultiplier;
         }
     }
 
