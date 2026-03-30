@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.12";
+        public const string PluginVersion = "1.9.13";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1921,30 +1921,76 @@ namespace MegaQoL
             if (vel.sqrMagnitude <= 0f) return;
 
             float speed = vel.magnitude;
-            Vector3 currentDir = vel / speed;
-
-            // Reduce projectile spread based on AimAccuracy.
-            // Vanilla ShootProjectile applies random angular spread (projectileAccuracy)
-            // to the bolt direction AFTER the turret aims perfectly. AimAccuracy only
-            // controlled the aim threshold (when to fire), not the actual bolt spread.
-            // Now we slerp the bolt direction back toward the barrel's true aim direction,
-            // removing spread proportionally: at 1x = full vanilla spread, 10x = ~zero spread.
+            float velMultiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
+            float finalSpeed = speed * Mathf.Max(1f, velMultiplier);
             float aimAccuracy = MegaQoLPlugin.BallistaAimAccuracy.Value;
-            if (aimAccuracy > 1f)
+
+            // Direct ballistic intercept: compute the mathematically perfect aim direction.
+            // Vanilla aiming has multiple error sources (2D distance calc, parallax between
+            // turret body and eye, smooth rotation lag, projectile spread). Instead of
+            // patching each one, we compute the exact intercept point and redirect the bolt.
+            var target = BallistaFriendlyHelper.GetTarget(__instance);
+            if (aimAccuracy > 1f && target != null && !target.IsDead())
             {
-                Vector3 barrelDir = __instance.m_eye.transform.forward;
-                // Quadratic spread correction: (1/aim)² for aggressive removal
-                // aim=1: t=1.0 (full spread), aim=5: t=0.04 (96% corrected), aim=10: t=0.01 (99% corrected)
-                float spreadFactor = 1f / (aimAccuracy * aimAccuracy);
-                currentDir = Vector3.Slerp(barrelDir, currentDir, spreadFactor).normalized;
+                Vector3 launchPos = __instance.m_eye.transform.position;
+                // Aim at center-of-mass: feet position + half capsule height
+                Vector3 targetPos = target.transform.position;
+                CapsuleCollider capsule = target.GetComponentInChildren<CapsuleCollider>();
+                float halfHeight = (capsule != null) ? capsule.height * 0.5f : 1f;
+                targetPos.y += halfHeight;
+
+                Vector3 targetVel = target.GetVelocity();
+                Vector3 toTarget = targetPos - launchPos;
+                float dist = toTarget.magnitude;
+
+                // Solve intercept: |targetPos + targetVel*t - launchPos| = finalSpeed * t
+                // Expanding: |toTarget + targetVel*t|² = (finalSpeed*t)²
+                // a*t² + b*t + c = 0 where:
+                float a = targetVel.sqrMagnitude - finalSpeed * finalSpeed;
+                float b = 2f * Vector3.Dot(toTarget, targetVel);
+                float c = toTarget.sqrMagnitude;
+
+                float interceptTime = -1f;
+                if (Mathf.Abs(a) < 0.001f)
+                {
+                    // Target speed ≈ bolt speed, linear solution
+                    if (Mathf.Abs(b) > 0.001f)
+                        interceptTime = -c / b;
+                }
+                else
+                {
+                    float disc = b * b - 4f * a * c;
+                    if (disc >= 0f)
+                    {
+                        float sqrtDisc = Mathf.Sqrt(disc);
+                        float t1 = (-b - sqrtDisc) / (2f * a);
+                        float t2 = (-b + sqrtDisc) / (2f * a);
+                        // Pick smallest positive solution
+                        if (t1 > 0.01f && t2 > 0.01f) interceptTime = Mathf.Min(t1, t2);
+                        else if (t1 > 0.01f) interceptTime = t1;
+                        else if (t2 > 0.01f) interceptTime = t2;
+                    }
+                }
+
+                if (interceptTime > 0f)
+                {
+                    Vector3 interceptPoint = targetPos + targetVel * interceptTime;
+                    Vector3 perfectDir = (interceptPoint - launchPos).normalized;
+
+                    // Blend between barrel direction and perfect intercept based on AimAccuracy
+                    // aim=1: 100% barrel (vanilla), aim=10: 100% perfect intercept
+                    float blendT = Mathf.Clamp01((aimAccuracy - 1f) / 9f);
+                    Vector3 barrelDir = __instance.m_eye.transform.forward;
+                    Vector3 finalDir = Vector3.Slerp(barrelDir, perfectDir, blendT).normalized;
+
+                    _projVelField.SetValue(projectile, finalDir * finalSpeed);
+                    return;
+                }
             }
 
-            // Apply velocity multiplier
-            float velMultiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
-            if (velMultiplier > 1f)
-                speed *= velMultiplier;
-
-            _projVelField.SetValue(projectile, currentDir * speed);
+            // Fallback: just apply velocity multiplier with barrel direction
+            Vector3 fallbackDir = __instance.m_eye.transform.forward;
+            _projVelField.SetValue(projectile, fallbackDir * finalSpeed);
         }
     }
 
