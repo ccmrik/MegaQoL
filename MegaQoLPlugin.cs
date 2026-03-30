@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.9";
+        public const string PluginVersion = "1.9.10";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1624,6 +1624,8 @@ namespace MegaQoL
         internal static float VanillaPredictionModifier;
         internal static float VanillaTurnRate;
         internal static float VanillaViewDistance;
+        internal static float VanillaLookAcceleration;
+        internal static float VanillaLookDeacceleration;
 
         [HarmonyPostfix]
         public static void Postfix(Turret __instance)
@@ -1636,8 +1638,10 @@ namespace MegaQoL
                 VanillaPredictionModifier = __instance.m_predictionModifier;
                 VanillaTurnRate = __instance.m_turnRate;
                 VanillaViewDistance = __instance.m_viewDistance;
+                VanillaLookAcceleration = __instance.m_lookAcceleration;
+                VanillaLookDeacceleration = __instance.m_lookDeacceleration;
                 _vanillaCached = true;
-                MegaQoLPlugin._logger.LogInfo($"[Ballista] Vanilla prefab values: cooldown={VanillaAttackCooldown}, shootWhenAimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}, viewDist={VanillaViewDistance}");
+                MegaQoLPlugin._logger.LogInfo($"[Ballista] Vanilla prefab values: cooldown={VanillaAttackCooldown}, shootWhenAimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}, viewDist={VanillaViewDistance}, lookAccel={VanillaLookAcceleration}, lookDecel={VanillaLookDeacceleration}");
                 BallistaFriendlyHelper.LogReflectionStatus();
             }
 
@@ -1785,6 +1789,14 @@ namespace MegaQoL
 
             turret.m_turnRate = MegaQoLPlugin.BallistaTurnRate.Value;
             turret.m_viewDistance = MegaQoLPlugin.BallistaRange.Value;
+
+            // Scale look acceleration/deceleration with turn rate ratio.
+            // Vanilla has m_lookAcceleration=1.2, m_lookDeacceleration=0.05 at turnRate=45.
+            // Without scaling these, the turret barrel lags behind fast-moving close targets
+            // because smooth rotation can't keep up with the required angular velocity.
+            float turnRatio = MegaQoLPlugin.BallistaTurnRate.Value / Turret_Awake_Patch.VanillaTurnRate;
+            turret.m_lookAcceleration = Turret_Awake_Patch.VanillaLookAcceleration * turnRatio;
+            turret.m_lookDeacceleration = Turret_Awake_Patch.VanillaLookDeacceleration * turnRatio;
 
             // Auto-compute prediction from velocity multiplier.
             // Turret calculates lead: target.vel * (dist / ammoVel) * predictionModifier
