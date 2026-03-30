@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.10";
+        public const string PluginVersion = "1.9.11";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -157,7 +157,7 @@ namespace MegaQoL
             BallistaFireRate = Config.Bind("3. Ballista", "FireRate", 1f,
                 new ConfigDescription("Fire rate multiplier (1 = vanilla 1 shot/2sec, 10 = 10x faster)", new AcceptableValueRange<float>(1f, 10f)));
             BallistaAimAccuracy = Config.Bind("3. Ballista", "AimAccuracy", 1f,
-                new ConfigDescription("Accuracy multiplier (1 = vanilla, 10 = 10x tighter aim)", new AcceptableValueRange<float>(1f, 10f)));
+                new ConfigDescription("Accuracy multiplier — tightens aim threshold AND reduces bolt spread (1 = vanilla, 10 = near-perfect accuracy)", new AcceptableValueRange<float>(1f, 10f)));
             BallistaTurnRate = Config.Bind("3. Ballista", "TurnRate", 45f,
                 new ConfigDescription("Turret rotation speed deg/sec (higher = faster tracking, vanilla = 45)", new AcceptableValueRange<float>(45f, 500f)));
             BallistaRange = Config.Bind("3. Ballista", "Range", 30f,
@@ -1901,16 +1901,38 @@ namespace MegaQoL
         [HarmonyPostfix]
         public static void Postfix(Turret __instance)
         {
-            float multiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
-            if (multiplier <= 1f) return;
+            if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
             if (_lastProjectileField == null || _projVelField == null) return;
             var projGO = _lastProjectileField.GetValue(__instance) as GameObject;
             if (projGO == null) return;
             var projectile = projGO.GetComponent<Projectile>();
             if (projectile == null) return;
             var vel = (Vector3)_projVelField.GetValue(projectile);
-            if (vel.sqrMagnitude > 0f)
-                _projVelField.SetValue(projectile, vel * multiplier);
+            if (vel.sqrMagnitude <= 0f) return;
+
+            float speed = vel.magnitude;
+            Vector3 currentDir = vel / speed;
+
+            // Reduce projectile spread based on AimAccuracy.
+            // Vanilla ShootProjectile applies random angular spread (projectileAccuracy)
+            // to the bolt direction AFTER the turret aims perfectly. AimAccuracy only
+            // controlled the aim threshold (when to fire), not the actual bolt spread.
+            // Now we slerp the bolt direction back toward the barrel's true aim direction,
+            // removing spread proportionally: at 1x = full vanilla spread, 10x = ~zero spread.
+            float aimAccuracy = MegaQoLPlugin.BallistaAimAccuracy.Value;
+            if (aimAccuracy > 1f)
+            {
+                Vector3 barrelDir = __instance.m_eye.transform.forward;
+                // Slerp(barrel, spread, 1/aim): at aim=1 → t=1 → full spread; at aim=10 → t=0.1 → 90% corrected
+                currentDir = Vector3.Slerp(barrelDir, currentDir, 1f / aimAccuracy).normalized;
+            }
+
+            // Apply velocity multiplier
+            float velMultiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
+            if (velMultiplier > 1f)
+                speed *= velMultiplier;
+
+            _projVelField.SetValue(projectile, currentDir * speed);
         }
     }
 
