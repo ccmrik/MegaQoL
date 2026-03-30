@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.0";
+        public const string PluginVersion = "1.9.1";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -155,13 +155,13 @@ namespace MegaQoL
             BallistaFiringVelocity = Config.Bind("3. Ballista", "FiringVelocity", 470f,
                 new ConfigDescription("Projectile velocity for ballista bolts (vanilla ~200)", new AcceptableValueRange<float>(1f, 2000f)));
             BallistaFireRate = Config.Bind("3. Ballista", "FireRate", 2f,
-                new ConfigDescription("Seconds between shots (vanilla 2, lower = faster)", new AcceptableValueRange<float>(0.1f, 30f)));
+                new ConfigDescription("Seconds between shots (lower = faster, default 2 = don't override)", new AcceptableValueRange<float>(0.1f, 30f)));
             BallistaAimAccuracy = Config.Bind("3. Ballista", "AimAccuracy", 5f,
-                new ConfigDescription("Max aim-angle before firing in degrees (vanilla 5, lower = waits for tighter aim)", new AcceptableValueRange<float>(0.1f, 45f)));
+                new ConfigDescription("Max aim-angle before firing in degrees (lower = tighter aim, default 5 = don't override)", new AcceptableValueRange<float>(0.1f, 45f)));
             BallistaPrediction = Config.Bind("3. Ballista", "Prediction", 1f,
-                new ConfigDescription("Target-lead prediction multiplier (vanilla 1, higher = better at hitting moving targets)", new AcceptableValueRange<float>(0f, 5f)));
+                new ConfigDescription("Target-lead prediction multiplier (higher = better vs moving targets, default 1 = don't override)", new AcceptableValueRange<float>(0f, 5f)));
             BallistaTurnRate = Config.Bind("3. Ballista", "TurnRate", 50f,
-                new ConfigDescription("Turret rotation speed in degrees/sec (vanilla 50, higher = faster tracking)", new AcceptableValueRange<float>(1f, 500f)));
+                new ConfigDescription("Turret rotation speed deg/sec (higher = faster tracking, default 50 = don't override)", new AcceptableValueRange<float>(1f, 500f)));
 
             // 4. Pet Feeder
             EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
@@ -1585,14 +1585,36 @@ namespace MegaQoL
     [HarmonyPatch(typeof(Turret), "Awake")]
     public static class Turret_Awake_Patch
     {
+        // Cache vanilla prefab values from the first turret that spawns
+        private static bool _vanillaCached = false;
+        internal static float VanillaAttackCooldown;
+        internal static float VanillaShootWhenAimDiff;
+        internal static float VanillaPredictionModifier;
+        internal static float VanillaTurnRate;
+
         [HarmonyPostfix]
         public static void Postfix(Turret __instance)
         {
-            // Apply ballista tuning (always)
-            __instance.m_attackCooldown = MegaQoLPlugin.BallistaFireRate.Value;
-            __instance.m_shootWhenAimDiff = MegaQoLPlugin.BallistaAimAccuracy.Value;
-            __instance.m_predictionModifier = MegaQoLPlugin.BallistaPrediction.Value;
-            __instance.m_turnRate = MegaQoLPlugin.BallistaTurnRate.Value;
+            // Capture vanilla values ONCE before overriding anything
+            if (!_vanillaCached)
+            {
+                VanillaAttackCooldown = __instance.m_attackCooldown;
+                VanillaShootWhenAimDiff = __instance.m_shootWhenAimDiff;
+                VanillaPredictionModifier = __instance.m_predictionModifier;
+                VanillaTurnRate = __instance.m_turnRate;
+                _vanillaCached = true;
+                MegaQoLPlugin._logger.LogInfo($"Ballista vanilla values: cooldown={VanillaAttackCooldown}, aimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}");
+            }
+
+            // Only override if user changed from our config defaults
+            if (MegaQoLPlugin.BallistaFireRate.Value != (float)MegaQoLPlugin.BallistaFireRate.DefaultValue)
+                __instance.m_attackCooldown = MegaQoLPlugin.BallistaFireRate.Value;
+            if (MegaQoLPlugin.BallistaAimAccuracy.Value != (float)MegaQoLPlugin.BallistaAimAccuracy.DefaultValue)
+                __instance.m_shootWhenAimDiff = MegaQoLPlugin.BallistaAimAccuracy.Value;
+            if (MegaQoLPlugin.BallistaPrediction.Value != (float)MegaQoLPlugin.BallistaPrediction.DefaultValue)
+                __instance.m_predictionModifier = MegaQoLPlugin.BallistaPrediction.Value;
+            if (MegaQoLPlugin.BallistaTurnRate.Value != (float)MegaQoLPlugin.BallistaTurnRate.DefaultValue)
+                __instance.m_turnRate = MegaQoLPlugin.BallistaTurnRate.Value;
 
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
 
