@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.9";
+        public const string PluginVersion = "1.8.10";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2354,12 +2354,10 @@ namespace MegaQoL
         private static FieldInfo _hitAreasField;
         private static FieldInfo _colliderField;
 
-        private Vector3 impactPoint;
         private int frameDelay = 2;
 
         public void Setup(Vector3 impact)
         {
-            impactPoint = impact;
         }
 
         void Update()
