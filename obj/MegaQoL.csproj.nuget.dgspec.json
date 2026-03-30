@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj": {}
+    "c:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj": {
-      "version": "1.8.10",
+    "c:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj": {
+      "version": "1.8.11",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj",
+        "projectUniqueName": "c:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj",
         "projectName": "MegaQoL",
-        "projectPath": "C:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj",
+        "projectPath": "c:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\MegaQoL.csproj",
         "packagesPath": "C:\\Users\\Rik\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\obj\\",
+        "outputPath": "c:\\Users\\Rik\\OneDrive\\Valheim Mods\\MegaQoL\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

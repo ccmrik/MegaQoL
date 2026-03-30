@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.10";
+        public const string PluginVersion = "1.8.11";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -41,6 +41,7 @@ namespace MegaQoL
         public static ConfigEntry<bool> BallistaAutoReloadUseBlackMetalChests;
         public static ConfigEntry<bool> BallistaAutoReloadUseBarrels;
         public static ConfigEntry<bool> EnableBallistaImprovements;
+        public static ConfigEntry<float> BallistaFiringVelocity;
 
         // Pet Feeder
         public static ConfigEntry<bool> EnableAutoPetFeeder;
@@ -147,6 +148,8 @@ namespace MegaQoL
                 "Allow reloading from Barrels");
             EnableBallistaImprovements = Config.Bind("3. Ballista", "EnableFriendlyFirePrevention", true,
                 "Prevents ballistas from shooting players or tamed creatures");
+            BallistaFiringVelocity = Config.Bind("3. Ballista", "FiringVelocity", 470f,
+                new ConfigDescription("Projectile velocity for ballista bolts (vanilla ~200)", new AcceptableValueRange<float>(1f, 2000f)));
 
             // 4. Pet Feeder
             EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
@@ -1687,6 +1690,9 @@ namespace MegaQoL
     [HarmonyPatch(typeof(Turret), "ShootProjectile")]
     public static class Turret_ShootProjectile_Patch
     {
+        private static readonly FieldInfo _lastProjectileField = typeof(Turret).GetField("m_lastProjectile", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo _projVelField = typeof(Projectile).GetField("m_vel", BindingFlags.NonPublic | BindingFlags.Instance);
+
         [HarmonyPrefix]
         public static bool Prefix(Turret __instance)
         {
@@ -1698,6 +1704,20 @@ namespace MegaQoL
                 return false;
             }
             return true;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(Turret __instance)
+        {
+            float desiredVel = MegaQoLPlugin.BallistaFiringVelocity.Value;
+            if (_lastProjectileField == null || _projVelField == null) return;
+            var projGO = _lastProjectileField.GetValue(__instance) as GameObject;
+            if (projGO == null) return;
+            var projectile = projGO.GetComponent<Projectile>();
+            if (projectile == null) return;
+            var vel = (Vector3)_projVelField.GetValue(projectile);
+            if (vel.sqrMagnitude > 0f)
+                _projVelField.SetValue(projectile, vel.normalized * desiredVel);
         }
     }
 
