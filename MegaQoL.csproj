@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>MegaQoL</AssemblyName>
     <RootNamespace>MegaQoL</RootNamespace>
-    <Version>1.9.1</Version>
+    <Version>1.9.2</Version>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

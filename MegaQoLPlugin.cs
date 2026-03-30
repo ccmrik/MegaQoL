@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.1";
+        public const string PluginVersion = "1.9.2";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -669,7 +669,7 @@ namespace MegaQoL
             }
             else
             {
-                validAmmoNames.AddRange(new[] { "TurretBolt", "TurretBoltWood", "TurretBoltFlametal" });
+                validAmmoNames.AddRange(new[] { "TurretBolt", "TurretBoltWood", "TurretBoltFlametal", "TurretBoltBone" });
             }
 
             foreach (var container in ContainerHelper.AllContainers)
@@ -1603,7 +1603,8 @@ namespace MegaQoL
                 VanillaPredictionModifier = __instance.m_predictionModifier;
                 VanillaTurnRate = __instance.m_turnRate;
                 _vanillaCached = true;
-                MegaQoLPlugin._logger.LogInfo($"Ballista vanilla values: cooldown={VanillaAttackCooldown}, aimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}");
+                MegaQoLPlugin._logger.LogInfo($"[Ballista] Vanilla values: cooldown={VanillaAttackCooldown}, aimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}");
+                BallistaFriendlyHelper.LogReflectionStatus();
             }
 
             // Only override if user changed from our config defaults
@@ -1618,9 +1619,9 @@ namespace MegaQoL
 
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
 
-            __instance.m_targetPlayers = false;
-            __instance.m_targetTamed = false;
-            __instance.m_targetEnemies = true;
+            // Force anti-player targeting — also sets m_targetTamedConfig to prevent vanilla
+            // from resetting m_targetTamed=true via ReadTargets()/SetTargets()
+            BallistaFriendlyHelper.ForceAntiPlayerTargeting(__instance);
         }
     }
 
@@ -1630,10 +1631,16 @@ namespace MegaQoL
         private static readonly FieldInfo _targetField = typeof(Turret).GetField("m_target", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo _haveTargetField = typeof(Turret).GetField("m_haveTarget", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo _allowedAmmoField = typeof(Turret).GetField("m_allowedAmmo", BindingFlags.Public | BindingFlags.Instance);
+        private static readonly FieldInfo _updateTargetTimerField = typeof(Turret).GetField("m_updateTargetTimer", BindingFlags.NonPublic | BindingFlags.Instance);
 
         public static FieldInfo TargetField => _targetField;
         public static FieldInfo HaveTargetField => _haveTargetField;
         public static FieldInfo AllowedAmmoField => _allowedAmmoField;
+
+        public static void LogReflectionStatus()
+        {
+            MegaQoLPlugin._logger.LogInfo($"[Ballista] Reflection: m_target={(_targetField != null ? "OK" : "MISSING")}, m_haveTarget={(_haveTargetField != null ? "OK" : "MISSING")}, m_updateTargetTimer={(_updateTargetTimerField != null ? "OK" : "MISSING")}, m_allowedAmmo={(_allowedAmmoField != null ? "OK" : "MISSING")}");
+        }
 
         public static Character GetTarget(Turret turret)
         {
@@ -1661,6 +1668,16 @@ namespace MegaQoL
         {
             if (_targetField != null) _targetField.SetValue(turret, null);
             if (_haveTargetField != null) _haveTargetField.SetValue(turret, false);
+            // Reset scan timer so turret re-scans for a hostile target immediately
+            if (_updateTargetTimerField != null) _updateTargetTimerField.SetValue(turret, 0f);
+        }
+
+        public static void ForceAntiPlayerTargeting(Turret turret)
+        {
+            turret.m_targetPlayers = false;
+            turret.m_targetTamed = false;
+            turret.m_targetTamedConfig = false;
+            turret.m_targetEnemies = true;
         }
     }
 
@@ -1671,18 +1688,14 @@ namespace MegaQoL
         public static void Prefix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
+            // Force targeting flags every tick in case vanilla/config resets them
+            BallistaFriendlyHelper.ForceAntiPlayerTargeting(__instance);
             var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
+            {
+                MegaQoLPlugin.Log($"[Ballista] FixedUpdate clearing friendly target: {target.m_name}");
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Turret __instance)
-        {
-            if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
-            var target = BallistaFriendlyHelper.GetTarget(__instance);
-            if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
-                BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
+            }
         }
     }
 
@@ -1693,11 +1706,15 @@ namespace MegaQoL
         public static void Prefix(Turret __instance)
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
-            __instance.m_targetPlayers = false;
-            __instance.m_targetTamed = false;
+            // Force targeting flags right before the search — also m_targetTamedConfig
+            // to stop vanilla from resetting m_targetTamed back to true
+            BallistaFriendlyHelper.ForceAntiPlayerTargeting(__instance);
             var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
+            {
+                MegaQoLPlugin.Log($"[Ballista] UpdateTarget prefix clearing stale friendly: {target.m_name}");
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
+            }
         }
 
         [HarmonyPostfix]
@@ -1705,8 +1722,18 @@ namespace MegaQoL
         {
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
             var target = BallistaFriendlyHelper.GetTarget(__instance);
-            if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
-                BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
+            if (target != null)
+            {
+                if (BallistaFriendlyHelper.IsFriendlyToPlayer(target))
+                {
+                    MegaQoLPlugin.Log($"[Ballista] UpdateTarget postfix clearing friendly: {target.m_name}");
+                    BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
+                }
+                else
+                {
+                    MegaQoLPlugin.Log($"[Ballista] UpdateTarget found hostile: {target.m_name}");
+                }
+            }
         }
     }
 
@@ -1720,6 +1747,7 @@ namespace MegaQoL
             var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
             {
+                MegaQoLPlugin.Log($"[Ballista] UpdateAttack blocking attack on friendly: {target.m_name}");
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
                 return false;
             }
@@ -1740,9 +1768,11 @@ namespace MegaQoL
             var target = BallistaFriendlyHelper.GetTarget(__instance);
             if (target != null && BallistaFriendlyHelper.IsFriendlyToPlayer(target))
             {
+                MegaQoLPlugin.Log($"[Ballista] ShootProjectile blocking shot at friendly: {target.m_name}");
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
                 return false;
             }
+            MegaQoLPlugin.Log($"[Ballista] FIRING at {(target != null ? target.m_name : "unknown")}");
             return true;
         }
 
