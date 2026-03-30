@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.8.11";
+        public const string PluginVersion = "1.9.0";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -42,6 +42,10 @@ namespace MegaQoL
         public static ConfigEntry<bool> BallistaAutoReloadUseBarrels;
         public static ConfigEntry<bool> EnableBallistaImprovements;
         public static ConfigEntry<float> BallistaFiringVelocity;
+        public static ConfigEntry<float> BallistaFireRate;
+        public static ConfigEntry<float> BallistaAimAccuracy;
+        public static ConfigEntry<float> BallistaPrediction;
+        public static ConfigEntry<float> BallistaTurnRate;
 
         // Pet Feeder
         public static ConfigEntry<bool> EnableAutoPetFeeder;
@@ -150,6 +154,14 @@ namespace MegaQoL
                 "Prevents ballistas from shooting players or tamed creatures");
             BallistaFiringVelocity = Config.Bind("3. Ballista", "FiringVelocity", 470f,
                 new ConfigDescription("Projectile velocity for ballista bolts (vanilla ~200)", new AcceptableValueRange<float>(1f, 2000f)));
+            BallistaFireRate = Config.Bind("3. Ballista", "FireRate", 2f,
+                new ConfigDescription("Seconds between shots (vanilla 2, lower = faster)", new AcceptableValueRange<float>(0.1f, 30f)));
+            BallistaAimAccuracy = Config.Bind("3. Ballista", "AimAccuracy", 5f,
+                new ConfigDescription("Max aim-angle before firing in degrees (vanilla 5, lower = waits for tighter aim)", new AcceptableValueRange<float>(0.1f, 45f)));
+            BallistaPrediction = Config.Bind("3. Ballista", "Prediction", 1f,
+                new ConfigDescription("Target-lead prediction multiplier (vanilla 1, higher = better at hitting moving targets)", new AcceptableValueRange<float>(0f, 5f)));
+            BallistaTurnRate = Config.Bind("3. Ballista", "TurnRate", 50f,
+                new ConfigDescription("Turret rotation speed in degrees/sec (vanilla 50, higher = faster tracking)", new AcceptableValueRange<float>(1f, 500f)));
 
             // 4. Pet Feeder
             EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
@@ -1576,6 +1588,12 @@ namespace MegaQoL
         [HarmonyPostfix]
         public static void Postfix(Turret __instance)
         {
+            // Apply ballista tuning (always)
+            __instance.m_attackCooldown = MegaQoLPlugin.BallistaFireRate.Value;
+            __instance.m_shootWhenAimDiff = MegaQoLPlugin.BallistaAimAccuracy.Value;
+            __instance.m_predictionModifier = MegaQoLPlugin.BallistaPrediction.Value;
+            __instance.m_turnRate = MegaQoLPlugin.BallistaTurnRate.Value;
+
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
 
             __instance.m_targetPlayers = false;
