@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.11";
+        public const string PluginVersion = "1.9.12";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -370,7 +370,13 @@ namespace MegaQoL
                 System.Threading.Thread.Sleep(100);
                 _config.Reload();
                 _logger.LogInfo("Config reloaded! Changes applied.");
-                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={BallistaAimAccuracy.Value}x, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={BallistaVelocityMultiplier.Value}x, AutoPrediction={Turret_Awake_Patch.VanillaPredictionModifier / BallistaVelocityMultiplier.Value:F3}");
+                float _velMult = BallistaVelocityMultiplier.Value;
+                float _aimAcc = BallistaAimAccuracy.Value;
+                float _vanPred = Turret_Awake_Patch.VanillaPredictionModifier / _velMult;
+                float _perfPred = 1f / _velMult;
+                float _predT = (_aimAcc - 1f) / 9f;
+                float _finalPred = Mathf.Lerp(_vanPred, _perfPred, _predT);
+                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={_aimAcc}x, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={_velMult}x, Prediction={_finalPred:F3} (spread={(1f/(_aimAcc*_aimAcc)):F3})");
 
                 if (Player.m_localPlayer != null)
                     Player.m_localPlayer.Message(MessageHud.MessageType.Center, "MegaQoL Config Reloaded!");
@@ -1798,13 +1804,17 @@ namespace MegaQoL
             turret.m_lookAcceleration = Turret_Awake_Patch.VanillaLookAcceleration * turnRatio;
             turret.m_lookDeacceleration = Turret_Awake_Patch.VanillaLookDeacceleration * turnRatio;
 
-            // Auto-compute prediction from velocity multiplier.
-            // Turret calculates lead: target.vel * (dist / ammoVel) * predictionModifier
-            // We multiply bolt speed by velMultiplier in the postfix, so actual flight time
-            // is (dist / ammoVel) / velMultiplier. Use vanilla prediction / velMultiplier
-            // to give vanilla-equivalent lead behavior at any bolt speed.
+            // Auto-compute prediction from velocity multiplier AND aim accuracy.
+            // Vanilla prediction = 2 (deliberate 2x overshoot for game balance).
+            // Perfect ballistic prediction = 1 (lead exactly one flight time).
+            // AimAccuracy scales from vanilla overshoot toward physically perfect aim:
+            //   aimAcc=1 → vanilla (2x overshoot), aimAcc=10 → perfect (1x lead)
             float velMultiplier = MegaQoLPlugin.BallistaVelocityMultiplier.Value;
-            turret.m_predictionModifier = Turret_Awake_Patch.VanillaPredictionModifier / velMultiplier;
+            float aimAccuracy = MegaQoLPlugin.BallistaAimAccuracy.Value;
+            float vanillaPred = Turret_Awake_Patch.VanillaPredictionModifier / velMultiplier;
+            float perfectPred = 1f / velMultiplier;
+            float t = (aimAccuracy - 1f) / 9f; // 0 at aim=1, 1 at aim=10
+            turret.m_predictionModifier = Mathf.Lerp(vanillaPred, perfectPred, t);
         }
     }
 
@@ -1923,8 +1933,10 @@ namespace MegaQoL
             if (aimAccuracy > 1f)
             {
                 Vector3 barrelDir = __instance.m_eye.transform.forward;
-                // Slerp(barrel, spread, 1/aim): at aim=1 → t=1 → full spread; at aim=10 → t=0.1 → 90% corrected
-                currentDir = Vector3.Slerp(barrelDir, currentDir, 1f / aimAccuracy).normalized;
+                // Quadratic spread correction: (1/aim)² for aggressive removal
+                // aim=1: t=1.0 (full spread), aim=5: t=0.04 (96% corrected), aim=10: t=0.01 (99% corrected)
+                float spreadFactor = 1f / (aimAccuracy * aimAccuracy);
+                currentDir = Vector3.Slerp(barrelDir, currentDir, spreadFactor).normalized;
             }
 
             // Apply velocity multiplier
