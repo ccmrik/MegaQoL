@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.15";
+        public const string PluginVersion = "1.9.16";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -104,6 +104,7 @@ namespace MegaQoL
         // Summoned Skeletons
         public static ConfigEntry<bool> EnableSkeletonBuff;
         public static ConfigEntry<float> SkeletonHealthMultiplier;
+        public static ConfigEntry<float> SkeletonHealPerSecond;
         public static ConfigEntry<bool> EnableSkeletonSpeedMatch;
         public static ConfigEntry<float> SkeletonAttackSpeedMultiplier;
 
@@ -257,9 +258,11 @@ namespace MegaQoL
 
             // 15. Summoned Skeletons
             EnableSkeletonBuff = Config.Bind("15. Summoned Skeletons", "Enable", true,
-                "Buffs summoned skeletons from the Dead Raiser (health, speed, attack speed)");
+                "Buffs summoned skeletons from the Dead Raiser (health, speed, attack speed, heal over time)");
             SkeletonHealthMultiplier = Config.Bind("15. Summoned Skeletons", "HealthMultiplier", 10f,
-                new ConfigDescription("Health multiplier for summoned skeletons (vanilla ≈ 1 HP)", new AcceptableValueRange<float>(1f, 100f)));
+                new ConfigDescription("Health multiplier for summoned skeletons (vanilla ≈ 40 HP)", new AcceptableValueRange<float>(1f, 100f)));
+            SkeletonHealPerSecond = Config.Bind("15. Summoned Skeletons", "HealPerSecond", 5f,
+                new ConfigDescription("HP healed per second for summoned skeletons (0 = disabled)", new AcceptableValueRange<float>(0f, 100f)));
             EnableSkeletonSpeedMatch = Config.Bind("15. Summoned Skeletons", "SpeedMatch", true,
                 "Match summoned skeleton walk/run speed to the player so they keep up");
             SkeletonAttackSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "AttackSpeedMultiplier", 1f,
@@ -2819,9 +2822,9 @@ namespace MegaQoL
         {
             if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
 
-            // Only attach to skeleton-like creatures
+            // Dead Raiser summons are "Skelett" prefabs (not "Skeleton")
             string objName = __instance.gameObject.name.ToLower();
-            if (!objName.Contains("skeleton")) return;
+            if (!objName.Contains("skelett")) return;
 
             if (__instance.gameObject.GetComponent<SkeletonBuff>() == null)
                 __instance.gameObject.AddComponent<SkeletonBuff>();
@@ -2830,7 +2833,8 @@ namespace MegaQoL
 
     /// <summary>
     /// Buffs summoned (tamed) skeletons from the Dead Raiser staff:
-    /// - Health multiplier (applied once on first tamed detection)
+    /// - Health multiplier (applied once on first tamed detection, via ZDO)
+    /// - Heal over time (continuous HP regen)
     /// - Speed matching to player walk/run speed (continuous)
     /// - Attack animation speed multiplier (continuous during attacks)
     /// </summary>
@@ -2840,6 +2844,7 @@ namespace MegaQoL
         private MonsterAI _monsterAI;
         private Animator _animator;
         private bool _healthApplied;
+        private float _healTimer;
 
         void Awake()
         {
@@ -2860,19 +2865,45 @@ namespace MegaQoL
             Player player = Player.m_localPlayer;
             if (player == null) return;
 
-            // Health multiplier — apply once
+            // Health multiplier — apply once via ZDO (m_health field is dead after Awake)
             if (!_healthApplied)
             {
                 _healthApplied = true;
                 float mult = MegaQoLPlugin.SkeletonHealthMultiplier.Value;
                 if (mult > 1f)
                 {
-                    _character.m_health *= mult;
-                    // Heal to new max via ZDO
                     var nview = _character.GetComponent<ZNetView>();
                     if (nview != null && nview.IsValid())
-                        nview.GetZDO().Set(ZDOVars.s_health, _character.GetMaxHealth());
-                    MegaQoLPlugin.Log($"[SkeletonBuff] Health buffed to {_character.GetMaxHealth()} ({mult}x)");
+                    {
+                        float newMax = _character.GetMaxHealth() * mult;
+                        nview.GetZDO().Set(ZDOVars.s_maxHealth, newMax);
+                        nview.GetZDO().Set(ZDOVars.s_health, newMax);
+                        _character.m_health = newMax; // sync field for any direct reads
+                        MegaQoLPlugin.Log($"[SkeletonBuff] Health buffed to {newMax} ({mult}x)");
+                    }
+                }
+            }
+
+            // Heal over time — continuous regen
+            float healRate = MegaQoLPlugin.SkeletonHealPerSecond.Value;
+            if (healRate > 0f)
+            {
+                _healTimer += Time.deltaTime;
+                if (_healTimer >= 1f)
+                {
+                    _healTimer = 0f;
+                    var nview = _character.GetComponent<ZNetView>();
+                    if (nview != null && nview.IsValid())
+                    {
+                        float maxHp = _character.GetMaxHealth();
+                        float curHp = nview.GetZDO().GetFloat(ZDOVars.s_health, maxHp);
+                        if (curHp < maxHp)
+                        {
+                            float newHp = Mathf.Min(curHp + healRate, maxHp);
+                            nview.GetZDO().Set(ZDOVars.s_health, newHp);
+                            _character.SetHealth(newHp);
+                        }
+                    }
                 }
             }
 
