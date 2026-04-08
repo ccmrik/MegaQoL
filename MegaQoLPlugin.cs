@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.18";
+        public const string PluginVersion = "1.9.19";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2888,9 +2888,9 @@ namespace MegaQoL
                 }
             }
 
-            // Heal over time — continuous regen
+            // Heal over time — continuous regen (skip if dead to prevent resurrection)
             float healRate = MegaQoLPlugin.SkeletonHealPerSecond.Value;
-            if (healRate > 0f)
+            if (healRate > 0f && !_character.IsDead())
             {
                 _healTimer += Time.deltaTime;
                 if (_healTimer >= 1f)
@@ -2900,11 +2900,10 @@ namespace MegaQoL
                     if (nview != null && nview.IsValid())
                     {
                         float maxHp = _character.GetMaxHealth();
-                        float curHp = nview.GetZDO().GetFloat(ZDOVars.s_health, maxHp);
-                        if (curHp < maxHp)
+                        float curHp = _character.GetHealth();
+                        if (curHp > 0f && curHp < maxHp)
                         {
                             float newHp = Mathf.Min(curHp + healRate, maxHp);
-                            nview.GetZDO().Set(ZDOVars.s_health, newHp);
                             _character.SetHealth(newHp);
                         }
                     }
