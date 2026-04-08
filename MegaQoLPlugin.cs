@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.13";
+        public const string PluginVersion = "1.9.14";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -100,6 +100,12 @@ namespace MegaQoL
         // Instant Mining
         public static ConfigEntry<bool> EnableAOEMining;
         public static ConfigEntry<KeyCode> AOEMiningKey;
+
+        // Summoned Skeletons
+        public static ConfigEntry<bool> EnableSkeletonBuff;
+        public static ConfigEntry<float> SkeletonHealthMultiplier;
+        public static ConfigEntry<bool> EnableSkeletonSpeedMatch;
+        public static ConfigEntry<float> SkeletonAttackSpeedMultiplier;
 
         // Debug
         public static ConfigEntry<bool> DebugMode;
@@ -249,8 +255,18 @@ namespace MegaQoL
             EnableMessageHudQueue = Config.Bind("14. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
-            // 15. Debug
-            DebugMode = Config.Bind("15. Debug", "DebugMode", false,
+            // 15. Summoned Skeletons
+            EnableSkeletonBuff = Config.Bind("15. Summoned Skeletons", "Enable", true,
+                "Buffs summoned skeletons from the Dead Raiser (health, speed, attack speed)");
+            SkeletonHealthMultiplier = Config.Bind("15. Summoned Skeletons", "HealthMultiplier", 10f,
+                new ConfigDescription("Health multiplier for summoned skeletons (vanilla ≈ 1 HP)", new AcceptableValueRange<float>(1f, 100f)));
+            EnableSkeletonSpeedMatch = Config.Bind("15. Summoned Skeletons", "SpeedMatch", true,
+                "Match summoned skeleton walk/run speed to the player so they keep up");
+            SkeletonAttackSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "AttackSpeedMultiplier", 1f,
+                new ConfigDescription("Attack animation speed multiplier (1 = vanilla, 2 = double speed)", new AcceptableValueRange<float>(1f, 5f)));
+
+            // 16. Debug
+            DebugMode = Config.Bind("16. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -286,7 +302,10 @@ namespace MegaQoL
                 changed |= MigrateCfgSection(ref text, "14. Instant Mining", "9. Instant Mining");
 
                 // v1.8.7 → v1.8.8: clean up stale Debug renumber
-                changed |= MigrateCfgSection(ref text, "14. Debug", "15. Debug");
+                changed |= MigrateCfgSection(ref text, "14. Debug", "16. Debug");
+
+                // v1.9.14: Summoned Skeletons inserted as section 15, Debug → 16
+                changed |= MigrateCfgSection(ref text, "15. Debug", "16. Debug");
 
                 // v1.9.6: remove obsolete FiringVelocity key (replaced by VelocityMultiplier)
                 changed |= MigrateCfgKey(ref text, "FiringVelocity");
@@ -2780,6 +2799,92 @@ namespace MegaQoL
 
             if (__instance.GetComponent<DeferredMineRockDestroy>() == null)
                 __instance.gameObject.AddComponent<DeferredMineRockDestroy>().Setup(hit.m_point);
+        }
+    }
+
+    // ==================== SUMMONED SKELETON BUFFS ====================
+
+    [HarmonyPatch(typeof(Character), "Awake")]
+    public static class Character_Awake_SkeletonBuff_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Character __instance)
+        {
+            if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
+
+            // Only attach to skeleton-like creatures
+            string objName = __instance.gameObject.name.ToLower();
+            if (!objName.Contains("skeleton")) return;
+
+            if (__instance.gameObject.GetComponent<SkeletonBuff>() == null)
+                __instance.gameObject.AddComponent<SkeletonBuff>();
+        }
+    }
+
+    /// <summary>
+    /// Buffs summoned (tamed) skeletons from the Dead Raiser staff:
+    /// - Health multiplier (applied once on first tamed detection)
+    /// - Speed matching to player walk/run speed (continuous)
+    /// - Attack animation speed multiplier (continuous during attacks)
+    /// </summary>
+    public class SkeletonBuff : MonoBehaviour
+    {
+        private Character _character;
+        private MonsterAI _monsterAI;
+        private Animator _animator;
+        private bool _healthApplied;
+
+        void Awake()
+        {
+            _character = GetComponent<Character>();
+            _monsterAI = GetComponent<MonsterAI>();
+            _animator = GetComponentInChildren<Animator>();
+        }
+
+        void Update()
+        {
+            if (_character == null) return;
+
+            // Only buff tamed skeletons (player-summoned via Dead Raiser)
+            if (!_character.IsTamed()) return;
+
+            if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
+
+            Player player = Player.m_localPlayer;
+            if (player == null) return;
+
+            // Health multiplier — apply once
+            if (!_healthApplied)
+            {
+                _healthApplied = true;
+                float mult = MegaQoLPlugin.SkeletonHealthMultiplier.Value;
+                if (mult > 1f)
+                {
+                    _character.m_health *= mult;
+                    // Heal to new max via ZDO
+                    var nview = _character.GetComponent<ZNetView>();
+                    if (nview != null && nview.IsValid())
+                        nview.GetZDO().Set(ZDOVars.s_health, _character.GetMaxHealth());
+                    MegaQoLPlugin.Log($"[SkeletonBuff] Health buffed to {_character.GetMaxHealth()} ({mult}x)");
+                }
+            }
+
+            // Speed matching — continuous
+            if (MegaQoLPlugin.EnableSkeletonSpeedMatch.Value)
+            {
+                _character.m_walkSpeed = player.m_walkSpeed;
+                _character.m_runSpeed = player.m_runSpeed;
+            }
+
+            // Attack speed — only during attacks to avoid twitchy idle/walk animations
+            if (_animator != null)
+            {
+                float attackMult = MegaQoLPlugin.SkeletonAttackSpeedMultiplier.Value;
+                if (attackMult > 1f && _character.InAttack())
+                    _animator.speed = attackMult;
+                else
+                    _animator.speed = 1f;
+            }
         }
     }
 
