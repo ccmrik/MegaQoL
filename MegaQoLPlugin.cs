@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.14";
+        public const string PluginVersion = "1.9.15";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -395,7 +395,8 @@ namespace MegaQoL
                 float _perfPred = 1f / _velMult;
                 float _predT = (_aimAcc - 1f) / 9f;
                 float _finalPred = Mathf.Lerp(_vanPred, _perfPred, _predT);
-                _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={_aimAcc}x, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={_velMult}x, Prediction={_finalPred:F3} (spread={(1f/(_aimAcc*_aimAcc)):F3})");
+                if (DebugMode.Value)
+                    _logger.LogInfo($"[Ballista] Config values: FireRate={BallistaFireRate.Value}x, AimAccuracy={_aimAcc}x, TurnRate={BallistaTurnRate.Value}, Range={BallistaRange.Value}, VelMultiplier={_velMult}x, Prediction={_finalPred:F3} (spread={(1f/(_aimAcc*_aimAcc)):F3})");
 
                 if (Player.m_localPlayer != null)
                     Player.m_localPlayer.Message(MessageHud.MessageType.Center, "MegaQoL Config Reloaded!");
@@ -1666,8 +1667,11 @@ namespace MegaQoL
                 VanillaLookAcceleration = __instance.m_lookAcceleration;
                 VanillaLookDeacceleration = __instance.m_lookDeacceleration;
                 _vanillaCached = true;
-                MegaQoLPlugin._logger.LogInfo($"[Ballista] Vanilla prefab values: cooldown={VanillaAttackCooldown}, shootWhenAimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}, viewDist={VanillaViewDistance}, lookAccel={VanillaLookAcceleration}, lookDecel={VanillaLookDeacceleration}");
-                BallistaFriendlyHelper.LogReflectionStatus();
+                if (MegaQoLPlugin.DebugMode.Value)
+                {
+                    MegaQoLPlugin._logger.LogInfo($"[Ballista] Vanilla prefab values: cooldown={VanillaAttackCooldown}, shootWhenAimDiff={VanillaShootWhenAimDiff}, prediction={VanillaPredictionModifier}, turnRate={VanillaTurnRate}, viewDist={VanillaViewDistance}, lookAccel={VanillaLookAcceleration}, lookDecel={VanillaLookDeacceleration}");
+                    BallistaFriendlyHelper.LogReflectionStatus();
+                }
             }
 
             // Config values are live-applied every FixedUpdate via ApplyConfigValues.
@@ -1675,7 +1679,8 @@ namespace MegaQoL
             if (!MegaQoLPlugin.EnableBallistaImprovements.Value) return;
             BallistaFriendlyHelper.ForceAntiPlayerTargeting(__instance);
 
-            MegaQoLPlugin._logger.LogInfo($"[Ballista] Turret initialized: ammo={__instance.GetAmmo()}/{__instance.m_maxAmmo}, viewDist={__instance.m_viewDistance}, hAngle={__instance.m_horizontalAngle}");
+            if (MegaQoLPlugin.DebugMode.Value)
+                MegaQoLPlugin._logger.LogInfo($"[Ballista] Turret initialized: ammo={__instance.GetAmmo()}/{__instance.m_maxAmmo}, viewDist={__instance.m_viewDistance}, hAngle={__instance.m_horizontalAngle}");
         }
     }
 
@@ -1695,7 +1700,8 @@ namespace MegaQoL
 
         public static void LogReflectionStatus()
         {
-            MegaQoLPlugin._logger.LogInfo($"[Ballista] Reflection: m_target={(_targetField != null ? "OK" : "MISSING")}, m_haveTarget={(_haveTargetField != null ? "OK" : "MISSING")}, m_updateTargetTimer={(_updateTargetTimerField != null ? "OK" : "MISSING")}, m_aimDiffToTarget={(_aimDiffField != null ? "OK" : "MISSING")}, m_nview={(_nviewField != null ? "OK" : "MISSING")}, m_allowedAmmo={(_allowedAmmoField != null ? "OK" : "MISSING")}");
+            if (MegaQoLPlugin.DebugMode.Value)
+                MegaQoLPlugin._logger.LogInfo($"[Ballista] Reflection: m_target={(_targetField != null ? "OK" : "MISSING")}, m_haveTarget={(_haveTargetField != null ? "OK" : "MISSING")}, m_updateTargetTimer={(_updateTargetTimerField != null ? "OK" : "MISSING")}, m_aimDiffToTarget={(_aimDiffField != null ? "OK" : "MISSING")}, m_nview={(_nviewField != null ? "OK" : "MISSING")}, m_allowedAmmo={(_allowedAmmoField != null ? "OK" : "MISSING")}");
         }
 
         public static Character GetTarget(Turret turret)
@@ -1923,7 +1929,8 @@ namespace MegaQoL
                 BallistaFriendlyHelper.ClearFriendlyTarget(__instance);
                 return false;
             }
-            MegaQoLPlugin._logger.LogInfo($"[Ballista] FIRING at {(target != null ? target.m_name : "unknown")} ammo={__instance.GetAmmo()}/{__instance.m_maxAmmo}");
+            if (MegaQoLPlugin.DebugMode.Value)
+                MegaQoLPlugin._logger.LogInfo($"[Ballista] FIRING at {(target != null ? target.m_name : "unknown")} ammo={__instance.GetAmmo()}/{__instance.m_maxAmmo}");
             return true;
         }
 
