@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.16";
+        public const string PluginVersion = "1.9.17";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2822,10 +2822,11 @@ namespace MegaQoL
         {
             if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
 
-            // Dead Raiser summons are "Skelett" prefabs (not "Skeleton")
+            // Match both prefab names (Skeleton_Friendly) and display names (Skelett)
             string objName = __instance.gameObject.name.ToLower();
-            if (!objName.Contains("skelett")) return;
+            if (!objName.Contains("skeleton") && !objName.Contains("skelett")) return;
 
+            MegaQoLPlugin.Log($"[SkeletonBuff] Attaching to '{__instance.gameObject.name}'");
             if (__instance.gameObject.GetComponent<SkeletonBuff>() == null)
                 __instance.gameObject.AddComponent<SkeletonBuff>();
         }
