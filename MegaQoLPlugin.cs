@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.19";
+        public const string PluginVersion = "1.9.20";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -100,14 +100,6 @@ namespace MegaQoL
         // Instant Mining
         public static ConfigEntry<bool> EnableAOEMining;
         public static ConfigEntry<KeyCode> AOEMiningKey;
-
-        // Summoned Skeletons
-        public static ConfigEntry<bool> EnableSkeletonBuff;
-        public static ConfigEntry<float> SkeletonHealthMultiplier;
-        public static ConfigEntry<float> SkeletonHealPerSecond;
-        public static ConfigEntry<bool> EnableSkeletonSpeedMatch;
-        public static ConfigEntry<float> SkeletonSpeedMultiplier;
-        public static ConfigEntry<float> SkeletonAttackSpeedMultiplier;
 
         // Debug
         public static ConfigEntry<bool> DebugMode;
@@ -257,22 +249,8 @@ namespace MegaQoL
             EnableMessageHudQueue = Config.Bind("14. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
-            // 15. Summoned Skeletons
-            EnableSkeletonBuff = Config.Bind("15. Summoned Skeletons", "Enable", true,
-                "Buffs summoned skeletons from the Dead Raiser (health, speed, attack speed, heal over time)");
-            SkeletonHealthMultiplier = Config.Bind("15. Summoned Skeletons", "HealthMultiplier", 10f,
-                new ConfigDescription("Health multiplier for summoned skeletons (vanilla ≈ 40 HP)", new AcceptableValueRange<float>(1f, 100f)));
-            SkeletonHealPerSecond = Config.Bind("15. Summoned Skeletons", "HealPerSecond", 5f,
-                new ConfigDescription("HP healed per second for summoned skeletons (0 = disabled)", new AcceptableValueRange<float>(0f, 100f)));
-            EnableSkeletonSpeedMatch = Config.Bind("15. Summoned Skeletons", "SpeedMatch", true,
-                "Match summoned skeleton walk/run speed to the player so they keep up");
-            SkeletonSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "SpeedMultiplier", 1.5f,
-                new ConfigDescription("Speed multiplier on top of player speed matching (1.5 = 50% faster than player, helps them keep up during sprint)", new AcceptableValueRange<float>(1f, 5f)));
-            SkeletonAttackSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "AttackSpeedMultiplier", 1f,
-                new ConfigDescription("Attack animation speed multiplier (1 = vanilla, 2 = double speed)", new AcceptableValueRange<float>(1f, 5f)));
-
-            // 16. Debug
-            DebugMode = Config.Bind("16. Debug", "DebugMode", false,
+            // 15. Debug
+            DebugMode = Config.Bind("15. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -310,8 +288,9 @@ namespace MegaQoL
                 // v1.8.7 → v1.8.8: clean up stale Debug renumber
                 changed |= MigrateCfgSection(ref text, "14. Debug", "16. Debug");
 
-                // v1.9.14: Summoned Skeletons inserted as section 15, Debug → 16
-                changed |= MigrateCfgSection(ref text, "15. Debug", "16. Debug");
+                // v1.9.20: Summoned Skeletons moved to MegaSkeletons mod, Debug → 15
+                changed |= MigrateCfgSection(ref text, "16. Debug", "15. Debug");
+                changed |= MigrateCfgSection(ref text, "15. Summoned Skeletons", null);
 
                 // v1.9.6: remove obsolete FiringVelocity key (replaced by VelocityMultiplier)
                 changed |= MigrateCfgKey(ref text, "FiringVelocity");
@@ -2815,140 +2794,4 @@ namespace MegaQoL
         }
     }
 
-    // ==================== SUMMONED SKELETON BUFFS ====================
-
-    [HarmonyPatch(typeof(Character), "Awake")]
-    public static class Character_Awake_SkeletonBuff_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Character __instance)
-        {
-            if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
-
-            // Match both prefab names (Skeleton_Friendly) and display names (Skelett)
-            string objName = __instance.gameObject.name.ToLower();
-            if (!objName.Contains("skeleton") && !objName.Contains("skelett")) return;
-
-            MegaQoLPlugin.Log($"[SkeletonBuff] Attaching to '{__instance.gameObject.name}'");
-            if (__instance.gameObject.GetComponent<SkeletonBuff>() == null)
-                __instance.gameObject.AddComponent<SkeletonBuff>();
-        }
-    }
-
-    /// <summary>
-    /// Buffs summoned (tamed) skeletons from the Dead Raiser staff:
-    /// - Health multiplier (applied once on first tamed detection, via ZDO)
-    /// - Heal over time (continuous HP regen)
-    /// - Speed matching to player walk/run speed (continuous)
-    /// - Attack animation speed multiplier (continuous during attacks)
-    /// </summary>
-    public class SkeletonBuff : MonoBehaviour
-    {
-        private Character _character;
-        private MonsterAI _monsterAI;
-        private Animator _animator;
-        private bool _healthApplied;
-        private float _healTimer;
-
-        void Awake()
-        {
-            _character = GetComponent<Character>();
-            _monsterAI = GetComponent<MonsterAI>();
-            _animator = GetComponentInChildren<Animator>();
-        }
-
-        void Update()
-        {
-            if (_character == null) return;
-
-            // Only buff tamed skeletons (player-summoned via Dead Raiser)
-            if (!_character.IsTamed()) return;
-
-            if (!MegaQoLPlugin.EnableSkeletonBuff.Value) return;
-
-            Player player = Player.m_localPlayer;
-            if (player == null) return;
-
-            // Health multiplier — apply once via ZDO (m_health field is dead after Awake)
-            if (!_healthApplied)
-            {
-                _healthApplied = true;
-                float mult = MegaQoLPlugin.SkeletonHealthMultiplier.Value;
-                if (mult > 1f)
-                {
-                    var nview = _character.GetComponent<ZNetView>();
-                    if (nview != null && nview.IsValid())
-                    {
-                        float newMax = _character.GetMaxHealth() * mult;
-                        nview.GetZDO().Set(ZDOVars.s_maxHealth, newMax);
-                        nview.GetZDO().Set(ZDOVars.s_health, newMax);
-                        _character.m_health = newMax; // sync field for any direct reads
-                        MegaQoLPlugin.Log($"[SkeletonBuff] Health buffed to {newMax} ({mult}x)");
-                    }
-                }
-            }
-
-            // Heal over time — continuous regen (skip if dead to prevent resurrection)
-            float healRate = MegaQoLPlugin.SkeletonHealPerSecond.Value;
-            if (healRate > 0f && !_character.IsDead())
-            {
-                _healTimer += Time.deltaTime;
-                if (_healTimer >= 1f)
-                {
-                    _healTimer = 0f;
-                    var nview = _character.GetComponent<ZNetView>();
-                    if (nview != null && nview.IsValid())
-                    {
-                        float maxHp = _character.GetMaxHealth();
-                        float curHp = _character.GetHealth();
-                        if (curHp > 0f && curHp < maxHp)
-                        {
-                            float newHp = Mathf.Min(curHp + healRate, maxHp);
-                            _character.SetHealth(newHp);
-                        }
-                    }
-                }
-            }
-
-            // Speed matching — continuous, with multiplier so they keep up during sprint
-            if (MegaQoLPlugin.EnableSkeletonSpeedMatch.Value)
-            {
-                float speedMult = MegaQoLPlugin.SkeletonSpeedMultiplier.Value;
-                _character.m_walkSpeed = player.m_walkSpeed * speedMult;
-                _character.m_runSpeed = player.m_runSpeed * speedMult;
-                _character.m_acceleration = 20f; // snappy acceleration (vanilla ~6)
-                _character.m_turnSpeed = 600f;    // fast turning to follow player
-            }
-
-            // Attack speed — only during attacks to avoid twitchy idle/walk animations
-            if (_animator != null)
-            {
-                float attackMult = MegaQoLPlugin.SkeletonAttackSpeedMultiplier.Value;
-                if (attackMult > 1f && _character.InAttack())
-                    _animator.speed = attackMult;
-                else
-                    _animator.speed = 1f;
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // VANILLA BUG FIX — MonsterAI.PheromoneFleeCheck NRE guard
-    // ═══════════════════════════════════════════════════════════════
-    [HarmonyPatch(typeof(MonsterAI), "PheromoneFleeCheck")]
-    public static class PheromoneFleeCheckNullGuard
-    {
-        static bool Prefix(MonsterAI __instance, Character target)
-        {
-            return __instance != null && target != null;
-        }
-
-        static Exception Finalizer(Exception __exception)
-        {
-            // Only swallow NRE from stale/destroyed references inside vanilla code
-            if (__exception is NullReferenceException)
-                return null;
-            return __exception;
-        }
-    }
 }
