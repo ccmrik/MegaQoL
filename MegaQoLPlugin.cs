@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.17";
+        public const string PluginVersion = "1.9.18";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -106,6 +106,7 @@ namespace MegaQoL
         public static ConfigEntry<float> SkeletonHealthMultiplier;
         public static ConfigEntry<float> SkeletonHealPerSecond;
         public static ConfigEntry<bool> EnableSkeletonSpeedMatch;
+        public static ConfigEntry<float> SkeletonSpeedMultiplier;
         public static ConfigEntry<float> SkeletonAttackSpeedMultiplier;
 
         // Debug
@@ -265,6 +266,8 @@ namespace MegaQoL
                 new ConfigDescription("HP healed per second for summoned skeletons (0 = disabled)", new AcceptableValueRange<float>(0f, 100f)));
             EnableSkeletonSpeedMatch = Config.Bind("15. Summoned Skeletons", "SpeedMatch", true,
                 "Match summoned skeleton walk/run speed to the player so they keep up");
+            SkeletonSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "SpeedMultiplier", 1.5f,
+                new ConfigDescription("Speed multiplier on top of player speed matching (1.5 = 50% faster than player, helps them keep up during sprint)", new AcceptableValueRange<float>(1f, 5f)));
             SkeletonAttackSpeedMultiplier = Config.Bind("15. Summoned Skeletons", "AttackSpeedMultiplier", 1f,
                 new ConfigDescription("Attack animation speed multiplier (1 = vanilla, 2 = double speed)", new AcceptableValueRange<float>(1f, 5f)));
 
@@ -2908,11 +2911,14 @@ namespace MegaQoL
                 }
             }
 
-            // Speed matching — continuous
+            // Speed matching — continuous, with multiplier so they keep up during sprint
             if (MegaQoLPlugin.EnableSkeletonSpeedMatch.Value)
             {
-                _character.m_walkSpeed = player.m_walkSpeed;
-                _character.m_runSpeed = player.m_runSpeed;
+                float speedMult = MegaQoLPlugin.SkeletonSpeedMultiplier.Value;
+                _character.m_walkSpeed = player.m_walkSpeed * speedMult;
+                _character.m_runSpeed = player.m_runSpeed * speedMult;
+                _character.m_acceleration = 20f; // snappy acceleration (vanilla ~6)
+                _character.m_turnSpeed = 600f;    // fast turning to follow player
             }
 
             // Attack speed — only during attacks to avoid twitchy idle/walk animations
