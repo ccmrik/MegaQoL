@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.21";
+        public const string PluginVersion = "1.9.22";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2214,6 +2214,7 @@ namespace MegaQoL
     {
         private static readonly FieldInfo _interactMaskField = AccessTools.Field(typeof(Player), "m_interactMask");
         private static readonly MethodInfo _extractMethod = AccessTools.Method(typeof(Beehive), "Extract");
+        private static readonly Collider[] _harvestBuffer = new Collider[128];
 
         [HarmonyPrefix]
         public static void Prefix(Player __instance, GameObject go, bool hold, bool alt)
@@ -2229,10 +2230,11 @@ namespace MegaQoL
             var pickable = go.GetComponentInParent<Pickable>();
             if (pickable != null)
             {
-                var colliders = Physics.OverlapSphere(go.transform.position,
-                    MegaQoLPlugin.MassHarvestRadius.Value, interactMask);
-                foreach (var col in colliders)
+                int count = Physics.OverlapSphereNonAlloc(go.transform.position,
+                    MegaQoLPlugin.MassHarvestRadius.Value, _harvestBuffer, interactMask);
+                for (int i = 0; i < count; i++)
                 {
+                    var col = _harvestBuffer[i];
                     if (col == null) continue;
                     var other = col.gameObject.GetComponentInParent<Pickable>();
                     if (other != null && other != pickable &&
@@ -2247,10 +2249,11 @@ namespace MegaQoL
             var beehive = go.GetComponentInParent<Beehive>();
             if (beehive != null && _extractMethod != null)
             {
-                var colliders = Physics.OverlapSphere(go.transform.position,
-                    MegaQoLPlugin.MassHarvestRadius.Value, interactMask);
-                foreach (var col in colliders)
+                int count = Physics.OverlapSphereNonAlloc(go.transform.position,
+                    MegaQoLPlugin.MassHarvestRadius.Value, _harvestBuffer, interactMask);
+                for (int i = 0; i < count; i++)
                 {
+                    var col = _harvestBuffer[i];
                     if (col == null) continue;
                     var other = col.gameObject.GetComponentInParent<Beehive>();
                     if (other != null && other != beehive &&
