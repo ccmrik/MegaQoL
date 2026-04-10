@@ -300,7 +300,7 @@ namespace MegaQoL
                 if (changed)
                     File.WriteAllText(configPath, text.TrimEnd() + "\n");
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
         }
 
         private static bool MigrateCfgSection(ref string text, string oldName, string newName)
@@ -422,7 +422,7 @@ namespace MegaQoL
                 if (Player.m_localPlayer != null && Player.m_localPlayer.InPlaceMode()) return true;
                 if (TextViewer.instance != null && TextViewer.instance.IsVisible()) return true;
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
             return false;
         }
 
@@ -569,7 +569,7 @@ namespace MegaQoL
                 if (currentFuel < maxFuel - 0.01f)
                     nview.GetZDO().Set(ZDOVars.s_fuel, maxFuel);
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
         }
 
         private static void RefuelCookingStation(CookingStation station)
@@ -585,7 +585,7 @@ namespace MegaQoL
                 if (currentFuel < maxFuel - 0.01f)
                     nview.GetZDO().Set(ZDOVars.s_fuel, maxFuel);
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
         }
     }
 
@@ -1153,7 +1153,7 @@ namespace MegaQoL
                     _loadMethod.Invoke(container, null);
                     if (inventory.GetAllItems().Count > 0) return;
                 }
-                catch { }
+                catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
             }
 
             try
@@ -1166,7 +1166,7 @@ namespace MegaQoL
                     return;
                 }
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
 
             if (_getStringHashMethod != null)
             {
@@ -1179,7 +1179,7 @@ namespace MegaQoL
                         inventory.Load(pkg);
                     }
                 }
-                catch { }
+                catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
             }
         }
 
@@ -1619,7 +1619,7 @@ namespace MegaQoL
                 player.TeleportTo(worldPos, player.transform.rotation, true);
                 player.Message(MessageHud.MessageType.Center, "Teleported!");
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
         }
     }
 
@@ -2223,6 +2223,7 @@ namespace MegaQoL
             if (hold || __instance.InAttack() || __instance.InDodge()) return;
             if (!Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value)) return;
 
+            if (_interactMaskField == null) return;
             int interactMask = (int)_interactMaskField.GetValue(__instance);
 
             var pickable = go.GetComponentInParent<Pickable>();
@@ -2681,7 +2682,7 @@ namespace MegaQoL
                     return;
                 }
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
 
             Destroy(this);
         }
@@ -2694,7 +2695,7 @@ namespace MegaQoL
                 if (nview != null && nview.IsValid() && !nview.IsOwner())
                     nview.ClaimOwnership();
             }
-            catch { }
+            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
 
             if (_damageAreaMethod == null)
                 _damageAreaMethod = typeof(MineRock5).GetMethod("DamageArea",
@@ -2726,7 +2727,7 @@ namespace MegaQoL
 
                 HitData areaHit = CreateDestroyHit(col.bounds.center);
                 try { _damageAreaMethod.Invoke(rock, new object[] { i, areaHit }); }
-                catch { }
+                catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
             }
         }
 
