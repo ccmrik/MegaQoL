@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.23";
+        public const string PluginVersion = "1.9.24";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1481,7 +1481,6 @@ namespace MegaQoL
             if (__result) return;
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
             if (__instance != Player.m_localPlayer) return;
-            if (__instance.InPlaceMode()) return;
             if (piece.m_resources == null) return;
 
             float radius = MegaQoLPlugin.CraftFromContainersRadius.Value;
@@ -1513,7 +1512,6 @@ namespace MegaQoL
         {
             if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return true;
             if (__instance != Player.m_localPlayer) return true;
-            if (__instance.InPlaceMode()) return true; // Planting/building uses inventory only
 
             var playerInventory = __instance.GetInventory();
             if (playerInventory == null) return true;
