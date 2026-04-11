@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.28";
+        public const string PluginVersion = "1.9.29";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -994,36 +994,28 @@ namespace MegaQoL
                     var item = eligible[i];
                     if (!chestItemNames.Contains(item.m_shared.m_name)) continue;
 
-                    int stack = item.m_stack;
-                    if (chestInventory.CanAddItem(item, stack))
+                    int freeSpace = ChestAutoPickupHelper.GetFreeSpaceForItem(chestInventory, item);
+                    if (freeSpace <= 0) continue;
+
+                    int toDeposit = Mathf.Min(freeSpace, item.m_stack);
+
+                    // Clone into chest, then remove from player
+                    var depositData = item.Clone();
+                    depositData.m_stack = toDeposit;
+                    chestInventory.AddItem(depositData);
+
+                    if (toDeposit >= item.m_stack)
                     {
-                        // Full stack fits
-                        chestInventory.AddItem(item);
                         playerInventory.RemoveItem(item);
-                        totalDeposited += stack;
-                        affectedChests.Add(container);
                         eligible.RemoveAt(i);
                     }
                     else
                     {
-                        // Try partial deposit — find how much room the chest has
-                        int freeSpace = ChestAutoPickupHelper.GetFreeSpaceForItem(chestInventory, item);
-                        if (freeSpace > 0)
-                        {
-                            int toDeposit = Mathf.Min(freeSpace, stack);
-                            var partialData = item.Clone();
-                            partialData.m_stack = toDeposit;
-                            chestInventory.AddItem(partialData);
-                            item.m_stack -= toDeposit;
-                            totalDeposited += toDeposit;
-                            affectedChests.Add(container);
-                            if (item.m_stack <= 0)
-                            {
-                                playerInventory.RemoveItem(item);
-                                eligible.RemoveAt(i);
-                            }
-                        }
+                        item.m_stack -= toDeposit;
                     }
+
+                    totalDeposited += toDeposit;
+                    affectedChests.Add(container);
                 }
             }
 
