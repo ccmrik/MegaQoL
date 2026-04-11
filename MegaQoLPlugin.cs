@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.22";
+        public const string PluginVersion = "1.9.23";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2230,27 +2230,34 @@ namespace MegaQoL
             var pickable = go.GetComponentInParent<Pickable>();
             if (pickable != null)
             {
+                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
                 int count = Physics.OverlapSphereNonAlloc(go.transform.position,
-                    MegaQoLPlugin.MassHarvestRadius.Value, _harvestBuffer, interactMask);
+                    radius, _harvestBuffer, interactMask, QueryTriggerInteraction.Collide);
+                int harvested = 0;
                 for (int i = 0; i < count; i++)
                 {
                     var col = _harvestBuffer[i];
                     if (col == null) continue;
                     var other = col.gameObject.GetComponentInParent<Pickable>();
                     if (other != null && other != pickable &&
+                        other.m_itemPrefab != null && pickable.m_itemPrefab != null &&
                         other.m_itemPrefab.name == pickable.m_itemPrefab.name)
                     {
                         other.Interact(__instance, false, alt);
+                        harvested++;
                     }
                 }
+                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} colliders={count} harvested={harvested} item={pickable.m_itemPrefab?.name}");
                 return;
             }
 
             var beehive = go.GetComponentInParent<Beehive>();
             if (beehive != null && _extractMethod != null)
             {
+                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
                 int count = Physics.OverlapSphereNonAlloc(go.transform.position,
-                    MegaQoLPlugin.MassHarvestRadius.Value, _harvestBuffer, interactMask);
+                    radius, _harvestBuffer, interactMask, QueryTriggerInteraction.Collide);
+                int extracted = 0;
                 for (int i = 0; i < count; i++)
                 {
                     var col = _harvestBuffer[i];
@@ -2260,8 +2267,10 @@ namespace MegaQoL
                         PrivateArea.CheckAccess(other.transform.position, 0f, true, false))
                     {
                         _extractMethod.Invoke(other, null);
+                        extracted++;
                     }
                 }
+                MegaQoLPlugin.Log($"[MassHarvest] Beehives: radius={radius} colliders={count} extracted={extracted}");
             }
         }
     }
