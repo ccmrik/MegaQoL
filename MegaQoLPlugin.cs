@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.27";
+        public const string PluginVersion = "1.9.28";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -2265,17 +2265,44 @@ namespace MegaQoL
                 float radius = MegaQoLPlugin.MassHarvestRadius.Value;
                 float radiusSq = radius * radius;
                 Vector3 origin = pickable.transform.position;
+                string targetItem = pickable.m_itemPrefab != null ? pickable.m_itemPrefab.name : null;
+                if (targetItem == null) return;
 
                 int harvested = 0;
                 var allPickables = UnityEngine.Object.FindObjectsOfType<Pickable>();
                 foreach (var other in allPickables)
                 {
                     if (other == null || other == pickable) continue;
+                    if (other.m_itemPrefab == null || other.m_itemPrefab.name != targetItem) continue;
                     if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
                     other.Interact(__instance, false, alt);
                     harvested++;
                 }
-                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} found={allPickables.Length} harvested={harvested}");
+                MegaQoLPlugin.Log($"[MassHarvest] Pickable radius={radius} harvested={harvested} item={targetItem}");
+                return;
+            }
+
+            // PickableItem covers gems, coins, amber, ruby etc. (separate class from Pickable)
+            var pickableItem = go.GetComponentInParent<PickableItem>();
+            if (pickableItem != null)
+            {
+                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
+                float radiusSq = radius * radius;
+                Vector3 origin = pickableItem.transform.position;
+                string targetItem = pickableItem.m_itemPrefab != null ? pickableItem.m_itemPrefab.name : null;
+                if (targetItem == null) return;
+
+                int harvested = 0;
+                var allPickableItems = UnityEngine.Object.FindObjectsOfType<PickableItem>();
+                foreach (var other in allPickableItems)
+                {
+                    if (other == null || other == pickableItem) continue;
+                    if (other.m_itemPrefab == null || other.m_itemPrefab.name != targetItem) continue;
+                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
+                    other.Interact(__instance, false, alt);
+                    harvested++;
+                }
+                MegaQoLPlugin.Log($"[MassHarvest] PickableItem radius={radius} harvested={harvested} item={targetItem}");
                 return;
             }
 
