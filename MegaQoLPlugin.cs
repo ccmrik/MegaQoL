@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.24";
+        public const string PluginVersion = "1.9.25";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -817,7 +817,7 @@ namespace MegaQoL
             return _itemLayerMask;
         }
 
-        private static int GetFreeSpaceForItem(Inventory inventory, ItemDrop.ItemData itemData)
+        public static int GetFreeSpaceForItem(Inventory inventory, ItemDrop.ItemData itemData)
         {
             int freeSpace = 0;
             int maxStack = itemData.m_shared.m_maxStackSize;
@@ -999,17 +999,41 @@ namespace MegaQoL
                     int stack = item.m_stack;
                     if (chestInventory.CanAddItem(item, stack))
                     {
+                        // Full stack fits
                         chestInventory.AddItem(item);
                         playerInventory.RemoveItem(item);
                         totalDeposited += stack;
                         affectedChests.Add(container);
                         eligible.RemoveAt(i);
                     }
+                    else
+                    {
+                        // Try partial deposit — find how much room the chest has
+                        int freeSpace = ChestAutoPickupHelper.GetFreeSpaceForItem(chestInventory, item);
+                        if (freeSpace > 0)
+                        {
+                            int toDeposit = Mathf.Min(freeSpace, stack);
+                            var partialData = item.Clone();
+                            partialData.m_stack = toDeposit;
+                            chestInventory.AddItem(partialData);
+                            item.m_stack -= toDeposit;
+                            totalDeposited += toDeposit;
+                            affectedChests.Add(container);
+                            if (item.m_stack <= 0)
+                            {
+                                playerInventory.RemoveItem(item);
+                                eligible.RemoveAt(i);
+                            }
+                        }
+                    }
                 }
             }
 
             foreach (var chest in affectedChests)
+            {
+                SaveContainerToZDO(chest);
                 ChestVFX.Play(chest.gameObject);
+            }
 
             if (totalDeposited > 0)
                 player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
@@ -1418,19 +1442,30 @@ namespace MegaQoL
 
     public static class ChestVFX
     {
-        private const string PowerEffectName = "fx_GP_Activation";
-
         public static void Play(GameObject target)
         {
             if (target == null) return;
+
+            var container = target.GetComponent<Container>();
+            if (container != null)
+            {
+                // Use the container's own open/close effects
+                container.m_openEffects?.Create(target.transform.position, target.transform.rotation);
+                return;
+            }
+
+            // Fallback: try common VFX prefabs
             if (ZNetScene.instance == null) return;
-
-            var prefab = ZNetScene.instance.GetPrefab(PowerEffectName);
-            if (prefab == null) return;
-
-            var fx = UnityEngine.Object.Instantiate(prefab, target.transform.position + Vector3.up * 1f, Quaternion.identity);
-            if (fx != null)
-                UnityEngine.Object.Destroy(fx, 5f);
+            foreach (var fxName in new[] { "vfx_pickable_pick", "fx_GP_Activation", "vfx_offering" })
+            {
+                var prefab = ZNetScene.instance.GetPrefab(fxName);
+                if (prefab != null)
+                {
+                    var fx = UnityEngine.Object.Instantiate(prefab, target.transform.position + Vector3.up * 1f, Quaternion.identity);
+                    if (fx != null) UnityEngine.Object.Destroy(fx, 5f);
+                    return;
+                }
+            }
         }
     }
 
@@ -2210,9 +2245,7 @@ namespace MegaQoL
     [HarmonyPatch(typeof(Player), "Interact")]
     public static class Player_Interact_MassHarvest_Patch
     {
-        private static readonly FieldInfo _interactMaskField = AccessTools.Field(typeof(Player), "m_interactMask");
         private static readonly MethodInfo _extractMethod = AccessTools.Method(typeof(Beehive), "Extract");
-        private static readonly Collider[] _harvestBuffer = new Collider[128];
 
         [HarmonyPrefix]
         public static void Prefix(Player __instance, GameObject go, bool hold, bool alt)
@@ -2222,30 +2255,27 @@ namespace MegaQoL
             if (hold || __instance.InAttack() || __instance.InDodge()) return;
             if (!Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value)) return;
 
-            if (_interactMaskField == null) return;
-            int interactMask = (int)_interactMaskField.GetValue(__instance);
-
             var pickable = go.GetComponentInParent<Pickable>();
             if (pickable != null)
             {
                 float radius = MegaQoLPlugin.MassHarvestRadius.Value;
-                int count = Physics.OverlapSphereNonAlloc(go.transform.position,
-                    radius, _harvestBuffer, interactMask, QueryTriggerInteraction.Collide);
+                float radiusSq = radius * radius;
+                Vector3 origin = pickable.transform.position;
+                string targetItem = pickable.m_itemPrefab != null ? pickable.m_itemPrefab.name : null;
+                if (targetItem == null) return;
+
                 int harvested = 0;
-                for (int i = 0; i < count; i++)
+                var allPickables = UnityEngine.Object.FindObjectsOfType<Pickable>();
+                foreach (var other in allPickables)
                 {
-                    var col = _harvestBuffer[i];
-                    if (col == null) continue;
-                    var other = col.gameObject.GetComponentInParent<Pickable>();
-                    if (other != null && other != pickable &&
-                        other.m_itemPrefab != null && pickable.m_itemPrefab != null &&
-                        other.m_itemPrefab.name == pickable.m_itemPrefab.name)
-                    {
-                        other.Interact(__instance, false, alt);
-                        harvested++;
-                    }
+                    if (other == null || other == pickable) continue;
+                    if (other.m_itemPrefab == null) continue;
+                    if (other.m_itemPrefab.name != targetItem) continue;
+                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
+                    other.Interact(__instance, false, alt);
+                    harvested++;
                 }
-                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} colliders={count} harvested={harvested} item={pickable.m_itemPrefab?.name}");
+                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} found={allPickables.Length} harvested={harvested} item={targetItem}");
                 return;
             }
 
@@ -2253,22 +2283,20 @@ namespace MegaQoL
             if (beehive != null && _extractMethod != null)
             {
                 float radius = MegaQoLPlugin.MassHarvestRadius.Value;
-                int count = Physics.OverlapSphereNonAlloc(go.transform.position,
-                    radius, _harvestBuffer, interactMask, QueryTriggerInteraction.Collide);
+                float radiusSq = radius * radius;
+                Vector3 origin = beehive.transform.position;
+
                 int extracted = 0;
-                for (int i = 0; i < count; i++)
+                var allBeehives = UnityEngine.Object.FindObjectsOfType<Beehive>();
+                foreach (var other in allBeehives)
                 {
-                    var col = _harvestBuffer[i];
-                    if (col == null) continue;
-                    var other = col.gameObject.GetComponentInParent<Beehive>();
-                    if (other != null && other != beehive &&
-                        PrivateArea.CheckAccess(other.transform.position, 0f, true, false))
-                    {
-                        _extractMethod.Invoke(other, null);
-                        extracted++;
-                    }
+                    if (other == null || other == beehive) continue;
+                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
+                    if (!PrivateArea.CheckAccess(other.transform.position, 0f, true, false)) continue;
+                    _extractMethod.Invoke(other, null);
+                    extracted++;
                 }
-                MegaQoLPlugin.Log($"[MassHarvest] Beehives: radius={radius} colliders={count} extracted={extracted}");
+                MegaQoLPlugin.Log($"[MassHarvest] Beehives: radius={radius} found={allBeehives.Length} extracted={extracted}");
             }
         }
     }
