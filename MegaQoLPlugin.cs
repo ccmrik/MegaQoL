@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.26";
+        public const string PluginVersion = "1.9.27";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -417,9 +417,7 @@ namespace MegaQoL
                 if (Console.IsVisible()) return true;
                 if (TextInput.IsVisible()) return true;
                 if (StoreGui.IsVisible()) return true;
-                if (Hud.IsPieceSelectionVisible()) return true;
                 if (Chat.instance != null && Chat.instance.HasFocus()) return true;
-                if (Player.m_localPlayer != null && Player.m_localPlayer.InPlaceMode()) return true;
                 if (TextViewer.instance != null && TextViewer.instance.IsVisible()) return true;
             }
             catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
@@ -2267,21 +2265,17 @@ namespace MegaQoL
                 float radius = MegaQoLPlugin.MassHarvestRadius.Value;
                 float radiusSq = radius * radius;
                 Vector3 origin = pickable.transform.position;
-                string targetItem = pickable.m_itemPrefab != null ? pickable.m_itemPrefab.name : null;
-                if (targetItem == null) return;
 
                 int harvested = 0;
                 var allPickables = UnityEngine.Object.FindObjectsOfType<Pickable>();
                 foreach (var other in allPickables)
                 {
                     if (other == null || other == pickable) continue;
-                    if (other.m_itemPrefab == null) continue;
-                    if (other.m_itemPrefab.name != targetItem) continue;
                     if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
                     other.Interact(__instance, false, alt);
                     harvested++;
                 }
-                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} found={allPickables.Length} harvested={harvested} item={targetItem}");
+                MegaQoLPlugin.Log($"[MassHarvest] radius={radius} found={allPickables.Length} harvested={harvested}");
                 return;
             }
 
