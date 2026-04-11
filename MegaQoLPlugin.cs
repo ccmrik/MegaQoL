@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.25";
+        public const string PluginVersion = "1.9.26";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1442,30 +1442,36 @@ namespace MegaQoL
 
     public static class ChestVFX
     {
+        private static GameObject _cachedPrefab;
+        private static bool _prefabLookedUp;
+
         public static void Play(GameObject target)
         {
             if (target == null) return;
-
-            var container = target.GetComponent<Container>();
-            if (container != null)
-            {
-                // Use the container's own open/close effects
-                container.m_openEffects?.Create(target.transform.position, target.transform.rotation);
-                return;
-            }
-
-            // Fallback: try common VFX prefabs
             if (ZNetScene.instance == null) return;
-            foreach (var fxName in new[] { "vfx_pickable_pick", "fx_GP_Activation", "vfx_offering" })
+
+            if (!_prefabLookedUp)
             {
-                var prefab = ZNetScene.instance.GetPrefab(fxName);
-                if (prefab != null)
+                _prefabLookedUp = true;
+                // Try the GP activation sparkle first (the nice one), then fallbacks
+                foreach (var name in new[] { "fx_GP_Activation", "fx_GP_Power", "vfx_offering" })
                 {
-                    var fx = UnityEngine.Object.Instantiate(prefab, target.transform.position + Vector3.up * 1f, Quaternion.identity);
-                    if (fx != null) UnityEngine.Object.Destroy(fx, 5f);
-                    return;
+                    _cachedPrefab = ZNetScene.instance.GetPrefab(name);
+                    if (_cachedPrefab != null)
+                    {
+                        MegaQoLPlugin.Log($"[ChestVFX] Using prefab: {name}");
+                        break;
+                    }
                 }
+                if (_cachedPrefab == null)
+                    MegaQoLPlugin.LogWarning("[ChestVFX] No VFX prefab found — chest sparkle disabled");
             }
+
+            if (_cachedPrefab == null) return;
+
+            var fx = UnityEngine.Object.Instantiate(_cachedPrefab, target.transform.position + Vector3.up * 1f, Quaternion.identity);
+            if (fx != null)
+                UnityEngine.Object.Destroy(fx, 5f);
         }
     }
 
