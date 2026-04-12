@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.29";
+        public const string PluginVersion = "1.9.30";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -948,7 +948,9 @@ namespace MegaQoL
                 return;
             }
 
-            // Build eligible items ONCE — skip hotbar (row 0) and equipped
+            // Build eligible items ONCE — skip hotbar (row 0), equipped, and extended-inventory slots
+            // Vanilla inventory is 8×4 (rows 0-3). Rows 4+ belong to extended inventory mods
+            // (e.g. AzuExtendedPlayerInventory equipment/quick slots) and must never be deposited.
             var eligible = new List<ItemDrop.ItemData>();
             var eligibleNames = new HashSet<string>();
             foreach (var playerItem in playerInventory.GetAllItems())
@@ -956,6 +958,7 @@ namespace MegaQoL
                 if (playerItem == null) continue;
                 if (playerItem.m_equipped) continue;
                 if (playerItem.m_gridPos.y == 0) continue;
+                if (playerItem.m_gridPos.y > 3) continue;
                 eligible.Add(playerItem);
                 eligibleNames.Add(playerItem.m_shared.m_name);
             }
