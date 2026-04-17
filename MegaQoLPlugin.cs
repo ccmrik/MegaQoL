@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.9.30";
+        public const string PluginVersion = "1.11.0";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -47,29 +47,6 @@ namespace MegaQoL
         public static ConfigEntry<float> BallistaTurnRate;
         public static ConfigEntry<float> BallistaRange;
 
-        // Pet Feeder
-        public static ConfigEntry<bool> EnableAutoPetFeeder;
-        public static ConfigEntry<float> AutoPetFeederRange;
-        public static ConfigEntry<float> AutoPetFeederInterval;
-        public static ConfigEntry<bool> AutoPetFeederUseChests;
-        public static ConfigEntry<bool> AutoPetFeederUseReinforcedChests;
-        public static ConfigEntry<bool> AutoPetFeederUseBlackMetalChests;
-        public static ConfigEntry<bool> AutoPetFeederUseBarrels;
-
-        // Item Management
-        public static ConfigEntry<bool> EnablePlayerPickupRadius;
-        public static ConfigEntry<float> PlayerPickupRadius;
-        public static ConfigEntry<bool> EnableChestAutoPickup;
-        public static ConfigEntry<float> ChestAutoPickupRadius;
-        public static ConfigEntry<float> ChestAutoPickupInterval;
-        public static ConfigEntry<bool> EnableQuickDeposit;
-        public static ConfigEntry<KeyCode> QuickDepositKey;
-        public static ConfigEntry<float> QuickDepositRadius;
-
-        // Craft from Containers
-        public static ConfigEntry<bool> EnableCraftFromContainers;
-        public static ConfigEntry<float> CraftFromContainersRadius;
-
         // Map Teleport
         public static ConfigEntry<bool> EnableMapTeleport;
 
@@ -88,15 +65,6 @@ namespace MegaQoL
         // MessageHud Smart Queue
         public static ConfigEntry<bool> EnableMessageHudQueue;
 
-        // Mass Farming
-        public static ConfigEntry<bool> EnableMassFarming;
-        public static ConfigEntry<KeyCode> MassFarmingKey;
-        public static ConfigEntry<float> MassHarvestRadius;
-        public static ConfigEntry<int> PlantGridWidth;
-        public static ConfigEntry<int> PlantGridLength;
-        public static ConfigEntry<bool> GridIgnoreStamina;
-        public static ConfigEntry<bool> GridIgnoreDurability;
-
         // Instant Mining
         public static ConfigEntry<bool> EnableAOEMining;
         public static ConfigEntry<KeyCode> AOEMiningKey;
@@ -106,10 +74,8 @@ namespace MegaQoL
 
         // Timers
         private static float _autoRefuelTimer = 0f;
-        private static float _autoPetFeederTimer = 0f;
         private static float _ballistaAutoReloadTimer = 0f;
         private static float _autoRepairTimer = 0f;
-        private static float _chestAutoPickupTimer = 0f;
 
         private void Awake()
         {
@@ -163,94 +129,39 @@ namespace MegaQoL
             BallistaRange = Config.Bind("3. Ballista", "Range", 30f,
                 new ConfigDescription("Targeting range in meters (vanilla = 30)", new AcceptableValueRange<float>(30f, 200f)));
 
-            // 4. Pet Feeder
-            EnableAutoPetFeeder = Config.Bind("4. Pet Feeder", "Enable", true,
-                "Automatically feeds tamed creatures from nearby containers");
-            AutoPetFeederRange = Config.Bind("4. Pet Feeder", "Range", 10f,
-                new ConfigDescription("Range to search for containers in meters", new AcceptableValueRange<float>(0f, 1000f)));
-            AutoPetFeederInterval = Config.Bind("4. Pet Feeder", "Interval", 10f,
-                new ConfigDescription("How often to feed pets (seconds)", new AcceptableValueRange<float>(1f, 60f)));
-            AutoPetFeederUseChests = Config.Bind("4. Pet Feeder", "UseChests", true,
-                "Allow feeding from regular Chests");
-            AutoPetFeederUseReinforcedChests = Config.Bind("4. Pet Feeder", "UseReinforcedChests", true,
-                "Allow feeding from Reinforced Chests");
-            AutoPetFeederUseBlackMetalChests = Config.Bind("4. Pet Feeder", "UseBlackMetalChests", true,
-                "Allow feeding from Black Metal Chests");
-            AutoPetFeederUseBarrels = Config.Bind("4. Pet Feeder", "UseBarrels", true,
-                "Allow feeding from Barrels");
-
-            // 5. Item Management
-            EnablePlayerPickupRadius = Config.Bind("5. Item Management", "EnablePlayerPickupRadius", true,
-                "Enables configurable player item pickup radius");
-            PlayerPickupRadius = Config.Bind("5. Item Management", "PlayerPickupRadius", 2f,
-                new ConfigDescription("Player item auto-pickup radius in meters (vanilla = 2)", new AcceptableValueRange<float>(1f, 1000f)));
-            EnableChestAutoPickup = Config.Bind("5. Item Management", "EnableChestAutoPickup", false,
-                "Chests automatically pull in nearby ground items that match their contents");
-            ChestAutoPickupRadius = Config.Bind("5. Item Management", "ChestAutoPickupRadius", 10f,
-                new ConfigDescription("Radius around chests to pull in matching ground items", new AcceptableValueRange<float>(1f, 1000f)));
-            ChestAutoPickupInterval = Config.Bind("5. Item Management", "ChestAutoPickupInterval", 2f,
-                new ConfigDescription("How often chests check for nearby items (seconds)", new AcceptableValueRange<float>(0.5f, 30f)));
-            EnableQuickDeposit = Config.Bind("5. Item Management", "EnableQuickDeposit", true,
-                "Enables quick deposit hotkey to deposit matching items into nearby chests");
-            QuickDepositKey = Config.Bind("5. Item Management", "QuickDepositKey", KeyCode.Period,
-                "Hotkey to deposit matching items from inventory into nearby chests");
-            QuickDepositRadius = Config.Bind("5. Item Management", "QuickDepositRadius", 10f,
-                new ConfigDescription("Radius to search for chests when quick-depositing", new AcceptableValueRange<float>(1f, 1000f)));
-
-            // 6. Craft from Containers
-            EnableCraftFromContainers = Config.Bind("6. Craft from Containers", "Enable", true,
-                "Allows crafting stations to pull materials from nearby containers");
-            CraftFromContainersRadius = Config.Bind("6. Craft from Containers", "Radius", 10f,
-                new ConfigDescription("Radius to search for containers when crafting", new AcceptableValueRange<float>(1f, 1000f)));
-
-            // 7. Mass Farming
-            EnableMassFarming = Config.Bind("7. Mass Farming", "Enable", true,
-                "Hold hotkey while interacting to mass-harvest pickables, or while planting to grid-plant");
-            MassFarmingKey = Config.Bind("7. Mass Farming", "Hotkey", KeyCode.LeftShift,
-                "Hold this key to activate mass farming features");
-            MassHarvestRadius = Config.Bind("7. Mass Farming", "HarvestRadius", 5f,
-                new ConfigDescription("Radius for mass harvesting pickables", new AcceptableValueRange<float>(1f, 1000f)));
-            PlantGridWidth = Config.Bind("7. Mass Farming", "PlantGridWidth", 5,
-                new ConfigDescription("Width of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            PlantGridLength = Config.Bind("7. Mass Farming", "PlantGridLength", 5,
-                new ConfigDescription("Length of grid when mass planting (odd numbers recommended)", new AcceptableValueRange<int>(1, 15)));
-            GridIgnoreStamina = Config.Bind("7. Mass Farming", "IgnoreStamina", false,
-                "Ignore stamina cost when grid planting extra plants");
-            GridIgnoreDurability = Config.Bind("7. Mass Farming", "IgnoreDurability", false,
-                "Ignore cultivator durability when grid planting");
-
-            // 8. Plant Anywhere
-            EnablePlantAnywhere = Config.Bind("8. Plant Anywhere", "Enable", true,
+            // 4. Plant Anywhere
+            // (sections renumbered after MegaStuff extraction)
+            EnablePlantAnywhere = Config.Bind("4. Plant Anywhere", "Enable", true,
                 "Enables planting crops in any biome (removes biome restrictions for non-tree plantables)");
 
-            // 9. Instant Mining
-            EnableAOEMining = Config.Bind("9. Instant Mining", "Enable", true,
+            // 6. Instant Mining
+            EnableAOEMining = Config.Bind("5. Instant Mining", "Enable", true,
                 "Hold hotkey while mining to instantly destroy the entire rock/ore deposit in one hit");
-            AOEMiningKey = Config.Bind("9. Instant Mining", "Hotkey", KeyCode.LeftShift,
+            AOEMiningKey = Config.Bind("5. Instant Mining", "Hotkey", KeyCode.LeftShift,
                 "Hold this key while pickaxing to instant-mine the target");
 
-            // 10. Build Dust Removal
-            EnableNoBuildDust = Config.Bind("10. Build Dust Removal", "Enable", true,
+            // 7. Build Dust Removal
+            EnableNoBuildDust = Config.Bind("6. Build Dust Removal", "Enable", true,
                 "Removes dust/particle effects when placing build pieces (keeps sound effects)");
 
-            // 11. Rune Build
-            EnableRuneBuild = Config.Bind("11. Rune Build", "Enable", true,
+            // 8. Rune Build
+            EnableRuneBuild = Config.Bind("7. Rune Build", "Enable", true,
                 "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
 
-            // 12. Map Teleport
-            EnableMapTeleport = Config.Bind("12. Map Teleport", "Enable", true,
+            // 9. Map Teleport
+            EnableMapTeleport = Config.Bind("8. Map Teleport", "Enable", true,
                 "Enables map teleportation - middle-click on map to teleport to that location");
 
-            // 13. No Mist
-            EnableNoMist = Config.Bind("13. No Mist", "Enable", true,
+            // 10. No Mist
+            EnableNoMist = Config.Bind("9. No Mist", "Enable", true,
                 "Removes all mist particle effects (Mistlands fog, swamp mist, etc)");
 
-            // 14. MessageHud Smart Queue
-            EnableMessageHudQueue = Config.Bind("14. MessageHud Smart Queue", "Enable", true,
+            // 11. MessageHud Smart Queue
+            EnableMessageHudQueue = Config.Bind("10. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
-            // 15. Debug
-            DebugMode = Config.Bind("15. Debug", "DebugMode", false,
+            // 99. Debug — standardised section across all Mega mods (v1.11.0+)
+            DebugMode = Config.Bind("99. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -291,6 +202,11 @@ namespace MegaQoL
                 // v1.9.20: Summoned Skeletons moved to MegaSkeletons mod, Debug → 15
                 changed |= MigrateCfgSection(ref text, "16. Debug", "15. Debug");
                 changed |= MigrateCfgSection(ref text, "15. Summoned Skeletons", null);
+
+                // v1.11.0: standardise debug section to "99. Debug" across every Mega mod
+                changed |= MigrateCfgSection(ref text, "11. Debug", "99. Debug");
+                changed |= MigrateCfgSection(ref text, "12. Debug", "99. Debug");
+                changed |= MigrateCfgSection(ref text, "15. Debug", "99. Debug");
 
                 // v1.9.6: remove obsolete FiringVelocity key (replaced by VelocityMultiplier)
                 changed |= MigrateCfgKey(ref text, "FiringVelocity");
@@ -407,23 +323,6 @@ namespace MegaQoL
         public static void LogWarning(string message) => _logger?.LogWarning(message);
         public static void LogError(string message) => _logger?.LogError(message);
 
-        private static bool IsUIBlockingInput()
-        {
-            try
-            {
-                if (InventoryGui.IsVisible()) return true;
-                if (Menu.IsVisible()) return true;
-                if (Minimap.IsOpen()) return true;
-                if (Console.IsVisible()) return true;
-                if (TextInput.IsVisible()) return true;
-                if (StoreGui.IsVisible()) return true;
-                if (Chat.instance != null && Chat.instance.HasFocus()) return true;
-                if (TextViewer.instance != null && TextViewer.instance.IsVisible()) return true;
-            }
-            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
-            return false;
-        }
-
         private void Update()
         {
             Player player = Player.m_localPlayer;
@@ -451,17 +350,6 @@ namespace MegaQoL
                 }
             }
 
-            // Auto pet feeder
-            if (EnableAutoPetFeeder.Value)
-            {
-                _autoPetFeederTimer += Time.deltaTime;
-                if (_autoPetFeederTimer >= AutoPetFeederInterval.Value)
-                {
-                    _autoPetFeederTimer = 0f;
-                    AutoPetFeederHelper.FeedNearbyPets(player.transform.position, AutoPetFeederRange.Value);
-                }
-            }
-
             // Ballista auto reload
             if (EnableBallistaAutoReload.Value)
             {
@@ -470,30 +358,6 @@ namespace MegaQoL
                 {
                     _ballistaAutoReloadTimer = 0f;
                     BallistaAutoReloadHelper.ReloadNearbyBallistas(player.transform.position, BallistaAutoReloadRange.Value);
-                }
-            }
-
-            // Chest auto-pickup
-            if (EnableChestAutoPickup.Value)
-            {
-                _chestAutoPickupTimer += Time.deltaTime;
-                if (_chestAutoPickupTimer >= ChestAutoPickupInterval.Value)
-                {
-                    _chestAutoPickupTimer = 0f;
-                    ChestAutoPickupHelper.PickupNearbyItems(player.transform.position, ChestAutoPickupRadius.Value);
-                }
-            }
-
-            // Quick deposit hotkey
-            if (EnableQuickDeposit.Value && Input.GetKeyDown(QuickDepositKey.Value))
-            {
-                if (IsUIBlockingInput())
-                {
-                    Log("[QuickDeposit] Key pressed but UI is blocking input");
-                }
-                else
-                {
-                    QuickDepositHelper.DepositMatchingItems(player, QuickDepositRadius.Value);
                 }
             }
 
@@ -584,87 +448,6 @@ namespace MegaQoL
                     nview.GetZDO().Set(ZDOVars.s_fuel, maxFuel);
             }
             catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
-        }
-    }
-
-    // ==================== AUTO PET FEEDER ====================
-
-    public static class AutoPetFeederHelper
-    {
-        // Cache reflection lookups
-        private static readonly FieldInfo _consumeItemsField = typeof(MonsterAI).GetField("m_consumeItems", BindingFlags.Public | BindingFlags.Instance);
-        private static readonly MethodInfo _onConsumedMethod = typeof(Tameable).GetMethod("OnConsumedItem", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-        public static void FeedNearbyPets(Vector3 position, float range)
-        {
-            float rangeSq = range * range;
-            var allCharacters = Character.GetAllCharacters();
-
-            foreach (var character in allCharacters)
-            {
-                if (character == null) continue;
-                if (!character.IsTamed()) continue;
-                if (character is Player) continue;
-                if ((position - character.transform.position).sqrMagnitude > rangeSq) continue;
-
-                var tameable = character.GetComponent<Tameable>();
-                if (tameable == null) continue;
-
-                TryFeedCreature(tameable, position, rangeSq);
-            }
-        }
-
-        private static void TryFeedCreature(Tameable tameable, Vector3 position, float rangeSq)
-        {
-            var monsterAI = tameable.GetComponent<MonsterAI>();
-            if (monsterAI == null) return;
-            if (_consumeItemsField == null) return;
-
-            var consumeItems = _consumeItemsField.GetValue(monsterAI) as List<ItemDrop>;
-            if (consumeItems == null || consumeItems.Count == 0) return;
-
-            var validFoodNames = new HashSet<string>();
-            foreach (var foodItem in consumeItems)
-                if (foodItem != null) validFoodNames.Add(foodItem.gameObject.name);
-
-            if (!tameable.IsHungry()) return;
-
-            foreach (var container in ContainerHelper.AllContainers)
-            {
-                if (container == null) continue;
-                if ((position - container.transform.position).sqrMagnitude > rangeSq) continue;
-                if (!IsAllowedContainer(container)) continue;
-
-                var inventory = container.GetInventory();
-                if (inventory == null) continue;
-
-                foreach (var item in inventory.GetAllItems())
-                {
-                    if (item == null || item.m_stack <= 0) continue;
-                    string prefabName = item.m_dropPrefab != null ? item.m_dropPrefab.name : item.m_shared.m_name;
-
-                    if (validFoodNames.Contains(prefabName))
-                    {
-                        inventory.RemoveItem(item, 1);
-                        if (_onConsumedMethod != null)
-                            _onConsumedMethod.Invoke(tameable, new object[] { null });
-                        return;
-                    }
-                }
-            }
-        }
-
-        private static bool IsAllowedContainer(Container container)
-        {
-            var type = ContainerHelper.GetContainerType(container);
-            switch (type)
-            {
-                case ContainerType.BlackMetalChest: return MegaQoLPlugin.AutoPetFeederUseBlackMetalChests.Value;
-                case ContainerType.Barrel: return MegaQoLPlugin.AutoPetFeederUseBarrels.Value;
-                case ContainerType.ReinforcedChest: return MegaQoLPlugin.AutoPetFeederUseReinforcedChests.Value;
-                case ContainerType.WoodChest: return MegaQoLPlugin.AutoPetFeederUseChests.Value;
-                default: return false;
-            }
         }
     }
 
@@ -773,292 +556,6 @@ namespace MegaQoL
         }
     }
 
-    // ==================== PLAYER PICKUP RADIUS ====================
-
-    [HarmonyPatch(typeof(Player), "AutoPickup")]
-    public static class Player_AutoPickup_Patch
-    {
-        private static float _savedRange;
-
-        [HarmonyPrefix]
-        public static void Prefix(Player __instance)
-        {
-            if (!MegaQoLPlugin.EnablePlayerPickupRadius.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-
-            _savedRange = __instance.m_autoPickupRange;
-            __instance.m_autoPickupRange = MegaQoLPlugin.PlayerPickupRadius.Value;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance)
-        {
-            if (!MegaQoLPlugin.EnablePlayerPickupRadius.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-
-            __instance.m_autoPickupRange = _savedRange;
-        }
-    }
-
-    // ==================== CHEST AUTO-PICKUP ====================
-
-    public static class ChestAutoPickupHelper
-    {
-        private static readonly Collider[] _overlapBuffer = new Collider[128];
-        private const int MAX_CONTAINERS_PER_PICKUP = 32;
-        private static int _itemLayerMask = -1;
-
-        private static int GetItemLayerMask()
-        {
-            if (_itemLayerMask == -1)
-                _itemLayerMask = LayerMask.GetMask("item");
-            return _itemLayerMask;
-        }
-
-        public static int GetFreeSpaceForItem(Inventory inventory, ItemDrop.ItemData itemData)
-        {
-            int freeSpace = 0;
-            int maxStack = itemData.m_shared.m_maxStackSize;
-            string itemName = itemData.m_shared.m_name;
-
-            foreach (var item in inventory.GetAllItems())
-            {
-                if (item != null && item.m_shared.m_name == itemName)
-                    freeSpace += maxStack - item.m_stack;
-            }
-
-            int totalSlots = inventory.GetWidth() * inventory.GetHeight();
-            int usedSlots = inventory.GetAllItems().Count;
-            freeSpace += Mathf.Max(0, totalSlots - usedSlots) * maxStack;
-
-            return freeSpace;
-        }
-
-        public static void PickupNearbyItems(Vector3 playerPosition, float radius)
-        {
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(playerPosition, radius);
-            int count = Mathf.Min(nearbyContainers.Count, MAX_CONTAINERS_PER_PICKUP);
-
-            MegaQoLPlugin.Log($"[ChestAutoPickup] Scanning {count} containers within {radius}m");
-
-            for (int c = 0; c < count; c++)
-            {
-                var container = nearbyContainers[c];
-                if (container == null) continue;
-
-                var containerNview = container.GetComponent<ZNetView>();
-                if (containerNview == null || !containerNview.IsValid()) continue;
-
-                var inventory = container.GetInventory();
-                if (inventory == null) continue;
-
-                ContainerHelper.EnsureLoaded(container, inventory);
-
-                var existingItems = new HashSet<string>();
-                foreach (var item in inventory.GetAllItems())
-                    if (item != null) existingItems.Add(item.m_shared.m_name);
-                if (existingItems.Count == 0) continue;
-
-                bool containerModified = false;
-                float pickupRange = Mathf.Min(radius, 5f);
-                int dropCount = Physics.OverlapSphereNonAlloc(
-                    container.transform.position, pickupRange, _overlapBuffer, GetItemLayerMask());
-
-                MegaQoLPlugin.Log($"[ChestAutoPickup] '{container.gameObject.name}': {existingItems.Count} item types, {dropCount} nearby drops");
-
-                var processedDrops = new HashSet<int>();
-
-                for (int j = 0; j < dropCount; j++)
-                {
-                    var drop = _overlapBuffer[j].GetComponentInParent<ItemDrop>();
-                    if (drop == null || drop.m_itemData == null) continue;
-
-                    int dropId = drop.GetInstanceID();
-                    if (processedDrops.Contains(dropId)) continue;
-                    processedDrops.Add(dropId);
-
-                    if (!existingItems.Contains(drop.m_itemData.m_shared.m_name)) continue;
-
-                    int freeSpace = GetFreeSpaceForItem(inventory, drop.m_itemData);
-                    if (freeSpace <= 0)
-                    {
-                        MegaQoLPlugin.Log($"[ChestAutoPickup] No room for '{drop.m_itemData.m_shared.m_name}' x{drop.m_itemData.m_stack}");
-                        continue;
-                    }
-
-                    int pickupAmount = Mathf.Min(freeSpace, drop.m_itemData.m_stack);
-                    bool fullPickup = pickupAmount >= drop.m_itemData.m_stack;
-
-                    if (!containerModified)
-                    {
-                        containerNview.ClaimOwnership();
-                        containerModified = true;
-                    }
-
-                    if (fullPickup)
-                    {
-                        inventory.AddItem(drop.m_itemData);
-                    }
-                    else
-                    {
-                        var partialData = drop.m_itemData.Clone();
-                        partialData.m_stack = pickupAmount;
-                        inventory.AddItem(partialData);
-                        drop.m_itemData.m_stack -= pickupAmount;
-                    }
-
-                    ChestVFX.Play(container.gameObject);
-                    MegaQoLPlugin.Log($"[ChestAutoPickup] Picked up {pickupAmount}x '{drop.m_itemData.m_shared.m_name}' ({(fullPickup ? "full" : "partial")})");
-
-                    if (fullPickup)
-                    {
-                        var nview = drop.GetComponent<ZNetView>();
-                        if (nview != null && nview.IsValid())
-                        {
-                            nview.ClaimOwnership();
-                            nview.Destroy();
-                        }
-                        else
-                        {
-                            UnityEngine.Object.Destroy(drop.gameObject);
-                        }
-                    }
-                }
-
-                if (containerModified)
-                    QuickDepositHelper.SaveContainerToZDO(container);
-            }
-        }
-    }
-
-    // ==================== QUICK DEPOSIT ====================
-
-    public static class QuickDepositHelper
-    {
-        public static void DepositMatchingItems(Player player, float radius)
-        {
-            var playerInventory = player.GetInventory();
-            if (playerInventory == null) return;
-
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(player.transform.position, radius);
-
-            if (nearbyContainers.Count == 0)
-            {
-                player.Message(MessageHud.MessageType.Center, "No chests nearby");
-                return;
-            }
-
-            // Build eligible items ONCE — skip hotbar (row 0), equipped, and extended-inventory slots
-            // Vanilla inventory is 8×4 (rows 0-3). Rows 4+ belong to extended inventory mods
-            // (e.g. AzuExtendedPlayerInventory equipment/quick slots) and must never be deposited.
-            var eligible = new List<ItemDrop.ItemData>();
-            var eligibleNames = new HashSet<string>();
-            foreach (var playerItem in playerInventory.GetAllItems())
-            {
-                if (playerItem == null) continue;
-                if (playerItem.m_equipped) continue;
-                if (playerItem.m_gridPos.y == 0) continue;
-                if (playerItem.m_gridPos.y > 3) continue;
-                eligible.Add(playerItem);
-                eligibleNames.Add(playerItem.m_shared.m_name);
-            }
-
-            if (eligible.Count == 0)
-            {
-                player.Message(MessageHud.MessageType.Center, "No depositable items");
-                return;
-            }
-
-            int totalDeposited = 0;
-            var affectedChests = new HashSet<Container>();
-
-            foreach (var container in nearbyContainers)
-            {
-                if (eligible.Count == 0) break;    // Everything deposited — done
-
-                var chestInventory = container.GetInventory();
-                if (chestInventory == null) continue;
-
-                ContainerHelper.EnsureLoaded(container, chestInventory);
-
-                // Quick check: does this chest contain any item names we have?
-                var chestItemNames = new HashSet<string>();
-                foreach (var chestItem in chestInventory.GetAllItems())
-                {
-                    if (chestItem == null) continue;
-                    if (eligibleNames.Contains(chestItem.m_shared.m_name))
-                        chestItemNames.Add(chestItem.m_shared.m_name);
-                }
-
-                if (chestItemNames.Count == 0) continue;
-
-                for (int i = eligible.Count - 1; i >= 0; i--)
-                {
-                    var item = eligible[i];
-                    if (!chestItemNames.Contains(item.m_shared.m_name)) continue;
-
-                    int freeSpace = ChestAutoPickupHelper.GetFreeSpaceForItem(chestInventory, item);
-                    if (freeSpace <= 0) continue;
-
-                    int toDeposit = Mathf.Min(freeSpace, item.m_stack);
-
-                    // Clone into chest, then remove from player
-                    var depositData = item.Clone();
-                    depositData.m_stack = toDeposit;
-                    chestInventory.AddItem(depositData);
-
-                    if (toDeposit >= item.m_stack)
-                    {
-                        playerInventory.RemoveItem(item);
-                        eligible.RemoveAt(i);
-                    }
-                    else
-                    {
-                        item.m_stack -= toDeposit;
-                    }
-
-                    totalDeposited += toDeposit;
-                    affectedChests.Add(container);
-                }
-            }
-
-            foreach (var chest in affectedChests)
-            {
-                SaveContainerToZDO(chest);
-                ChestVFX.Play(chest.gameObject);
-            }
-
-            if (totalDeposited > 0)
-                player.Message(MessageHud.MessageType.Center, $"Deposited {totalDeposited} items into {affectedChests.Count} chest(s)");
-            else
-                player.Message(MessageHud.MessageType.Center, "No matching items to deposit");
-        }
-
-        /// <summary>
-        /// Writes a container's in-memory inventory to its ZDO so changes persist.
-        /// Used by ChestAutoPickup.
-        /// </summary>
-        public static void SaveContainerToZDO(Container container)
-        {
-            try
-            {
-                var nview = container.GetComponent<ZNetView>();
-                if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
-
-                var inv = container.GetInventory();
-                if (inv == null) return;
-
-                ZPackage pkg = new ZPackage();
-                inv.Save(pkg);
-                nview.GetZDO().Set(ZDOVars.s_items, pkg.GetBase64());
-            }
-            catch (Exception ex)
-            {
-                MegaQoLPlugin.LogError($"[SaveContainerToZDO] Error: {ex.Message}");
-            }
-        }
-    }
-
     // ==================== CONTAINER TYPE ====================
 
     public enum ContainerType
@@ -1072,173 +569,59 @@ namespace MegaQoL
         Private
     }
 
-    // ==================== CONTAINER HELPER ====================
+    // ==================== CONTAINER HELPER (SLIM — for Refuel/Ballista) ====================
 
     public static class ContainerHelper
     {
         public static readonly HashSet<Container> AllContainers = new HashSet<Container>();
-
-        // Type cache — classified once at registration, no repeated string ops
         private static readonly Dictionary<Container, ContainerType> _typeCache = new Dictionary<Container, ContainerType>();
-
-        // Nearby container cache — avoids iterating all containers every call
         private static readonly List<Container> _nearbyCache = new List<Container>();
         private static Vector3 _nearbyCachePos;
         private static float _nearbyCacheRadius;
         private static float _nearbyCacheTime;
         private const float NEARBY_CACHE_TTL = 1.0f;
-
-        // Combined material count cache for CraftFromContainers
-        private static readonly Dictionary<string, int> _materialCache = new Dictionary<string, int>();
-        private static float _materialCacheTime;
-        private static Vector3 _materialCachePos;
-        private static float _materialCacheRadius;
-        private const float MATERIAL_CACHE_TTL = 0.5f;
-
-        // Stale entry pruning
         private static float _lastPruneTime;
         private const float PRUNE_INTERVAL = 30f;
-
-        // Reflection for loading
-        private static readonly MethodInfo _loadMethod;
-        private static readonly MethodInfo _getStringHashMethod;
-        private static readonly int _itemsHash;
-
-        static ContainerHelper()
-        {
-            var flags = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance;
-            _loadMethod = typeof(Container).GetMethod("Load", flags)
-                       ?? typeof(Container).GetMethod("LoadInventory", flags)
-                       ?? typeof(Container).GetMethod("ReadInventory", flags);
-
-            _getStringHashMethod = typeof(ZDO).GetMethod("GetString", new[] { typeof(int), typeof(string) });
-            _itemsHash = "items".GetStableHashCode();
-        }
 
         public static ContainerType ClassifyContainer(Container container)
         {
             string name = container.gameObject.name.ToLower();
-            if (name.Contains("private"))
-                return ContainerType.Private;
-            if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest"))
-                return ContainerType.BlackMetalChest;
-            if (name.Contains("incinerator") || name.Contains("obliterator"))
-                return ContainerType.Obliterator;
-            if (name.Contains("barrel"))
-                return ContainerType.Barrel;
-            if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) &&
-                !name.Contains("wood") && !name.Contains("blackmetal"))
-                return ContainerType.ReinforcedChest;
-            if (name.Contains("chest"))
-                return ContainerType.WoodChest;
+            if (name.Contains("private")) return ContainerType.Private;
+            if (name.Contains("piece_chest_blackmetal") || name.StartsWith("blackmetalchest")) return ContainerType.BlackMetalChest;
+            if (name.Contains("incinerator") || name.Contains("obliterator")) return ContainerType.Obliterator;
+            if (name.Contains("barrel")) return ContainerType.Barrel;
+            if ((name.Contains("piece_chest") || name.StartsWith("reinforcedchest")) && !name.Contains("wood") && !name.Contains("blackmetal")) return ContainerType.ReinforcedChest;
+            if (name.Contains("chest")) return ContainerType.WoodChest;
             return ContainerType.Unknown;
         }
 
-        public static void Register(Container container)
-        {
-            AllContainers.Add(container);
-            _typeCache[container] = ClassifyContainer(container);
-        }
-
-        public static void Unregister(Container container)
-        {
-            AllContainers.Remove(container);
-            _typeCache.Remove(container);
-            InvalidateNearbyCache();
-        }
+        public static void Register(Container container) { AllContainers.Add(container); _typeCache[container] = ClassifyContainer(container); }
+        public static void Unregister(Container container) { AllContainers.Remove(container); _typeCache.Remove(container); _nearbyCacheTime = 0f; }
 
         public static ContainerType GetContainerType(Container container)
         {
-            if (_typeCache.TryGetValue(container, out var type))
-                return type;
+            if (_typeCache.TryGetValue(container, out var type)) return type;
             return ContainerType.Unknown;
-        }
-
-        public static void EnsureLoaded(Container container, Inventory inventory)
-        {
-            if (inventory.GetAllItems().Count > 0) return;
-
-            var nview = container.GetComponent<ZNetView>();
-            if (nview == null || !nview.IsValid()) return;
-            var zdo = nview.GetZDO();
-            if (zdo == null) return;
-
-            if (_loadMethod != null)
-            {
-                try
-                {
-                    _loadMethod.Invoke(container, null);
-                    if (inventory.GetAllItems().Count > 0) return;
-                }
-                catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
-            }
-
-            try
-            {
-                string data = zdo.GetString(ZDOVars.s_items, "");
-                if (!string.IsNullOrEmpty(data))
-                {
-                    ZPackage pkg = new ZPackage(data);
-                    inventory.Load(pkg);
-                    return;
-                }
-            }
-            catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
-
-            if (_getStringHashMethod != null)
-            {
-                try
-                {
-                    string data = (string)_getStringHashMethod.Invoke(zdo, new object[] { _itemsHash, "" });
-                    if (!string.IsNullOrEmpty(data))
-                    {
-                        ZPackage pkg = new ZPackage(data);
-                        inventory.Load(pkg);
-                    }
-                }
-                catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
-            }
-        }
-
-        public static void InvalidateNearbyCache()
-        {
-            _nearbyCacheTime = 0f;
-            _materialCacheTime = 0f;
-        }
-
-        public static void InvalidateMaterialCache()
-        {
-            _materialCacheTime = 0f;
         }
 
         public static List<Container> FindNearbyContainers(Vector3 position, float radius)
         {
             float now = Time.time;
-
-            // Prune stale entries periodically (destroyed containers from zone unloads)
             if (now - _lastPruneTime > PRUNE_INTERVAL)
             {
                 _lastPruneTime = now;
                 AllContainers.RemoveWhere(c => c == null);
                 var staleKeys = new List<Container>();
-                foreach (var kvp in _typeCache)
-                    if (kvp.Key == null) staleKeys.Add(kvp.Key);
+                foreach (var kvp in _typeCache) if (kvp.Key == null) staleKeys.Add(kvp.Key);
                 foreach (var k in staleKeys) _typeCache.Remove(k);
             }
-
-            // Return cached result if still valid
-            if (now - _nearbyCacheTime < NEARBY_CACHE_TTL &&
-                Mathf.Approximately(_nearbyCacheRadius, radius) &&
-                (position - _nearbyCachePos).sqrMagnitude < 4f)
-            {
+            if (now - _nearbyCacheTime < NEARBY_CACHE_TTL && Mathf.Approximately(_nearbyCacheRadius, radius) && (position - _nearbyCachePos).sqrMagnitude < 4f)
                 return _nearbyCache;
-            }
 
             _nearbyCache.Clear();
             _nearbyCachePos = position;
             _nearbyCacheRadius = radius;
             _nearbyCacheTime = now;
-
             float radiusSq = radius * radius;
             foreach (var container in AllContainers)
             {
@@ -1249,64 +632,6 @@ namespace MegaQoL
                 _nearbyCache.Add(container);
             }
             return _nearbyCache;
-        }
-
-        // Cached combined material counts (player inventory + nearby containers)
-        public static int GetCombinedItemCount(string itemName, Player player, float radius)
-        {
-            EnsureMaterialCache(player, radius);
-            return _materialCache.TryGetValue(itemName, out int count) ? count : 0;
-        }
-
-        private static void EnsureMaterialCache(Player player, float radius)
-        {
-            float now = Time.time;
-            Vector3 pos = player.transform.position;
-
-            if (now - _materialCacheTime < MATERIAL_CACHE_TTL &&
-                Mathf.Approximately(_materialCacheRadius, radius) &&
-                (pos - _materialCachePos).sqrMagnitude < 4f)
-            {
-                return;
-            }
-
-            _materialCache.Clear();
-            _materialCachePos = pos;
-            _materialCacheRadius = radius;
-            _materialCacheTime = now;
-
-            // Add player inventory
-            var playerInv = player.GetInventory();
-            if (playerInv != null)
-            {
-                foreach (var item in playerInv.GetAllItems())
-                {
-                    if (item == null) continue;
-                    string name = item.m_shared.m_name;
-                    if (_materialCache.ContainsKey(name))
-                        _materialCache[name] += item.m_stack;
-                    else
-                        _materialCache[name] = item.m_stack;
-                }
-            }
-
-            // Add nearby containers
-            var containers = FindNearbyContainers(pos, radius);
-            foreach (var container in containers)
-            {
-                var inv = container.GetInventory();
-                if (inv == null) continue;
-                EnsureLoaded(container, inv);
-                foreach (var item in inv.GetAllItems())
-                {
-                    if (item == null) continue;
-                    string name = item.m_shared.m_name;
-                    if (_materialCache.ContainsKey(name))
-                        _materialCache[name] += item.m_stack;
-                    else
-                        _materialCache[name] = item.m_stack;
-                }
-            }
         }
     }
 
@@ -1428,191 +753,6 @@ namespace MegaQoL
         {
             var t = GetComponent<Turret>();
             if (t != null) BallistaAutoReloadHelper.AllTurrets.Remove(t);
-        }
-    }
-
-    // ==================== CHEST VFX ====================
-
-    public static class ChestVFX
-    {
-        private static GameObject _cachedPrefab;
-        private static bool _prefabLookedUp;
-
-        public static void Play(GameObject target)
-        {
-            if (target == null) return;
-            if (ZNetScene.instance == null) return;
-
-            if (!_prefabLookedUp)
-            {
-                _prefabLookedUp = true;
-                // Try the GP activation sparkle first (the nice one), then fallbacks
-                foreach (var name in new[] { "fx_GP_Activation", "fx_GP_Power", "vfx_offering" })
-                {
-                    _cachedPrefab = ZNetScene.instance.GetPrefab(name);
-                    if (_cachedPrefab != null)
-                    {
-                        MegaQoLPlugin.Log($"[ChestVFX] Using prefab: {name}");
-                        break;
-                    }
-                }
-                if (_cachedPrefab == null)
-                    MegaQoLPlugin.LogWarning("[ChestVFX] No VFX prefab found — chest sparkle disabled");
-            }
-
-            if (_cachedPrefab == null) return;
-
-            var fx = UnityEngine.Object.Instantiate(_cachedPrefab, target.transform.position + Vector3.up * 1f, Quaternion.identity);
-            if (fx != null)
-                UnityEngine.Object.Destroy(fx, 5f);
-        }
-    }
-
-    // ==================== CRAFT FROM CONTAINERS ====================
-
-    /// <summary>
-    /// Patches the crafting system so that when a player crafts or upgrades an item,
-    /// materials are pulled from nearby containers if the player's inventory doesn't
-    /// have enough. Also makes the "have resources" check aware of container contents
-    /// so recipes show as craftable.
-    /// </summary>
-    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Recipe), typeof(bool), typeof(int), typeof(int) })]
-    public static class Player_HaveRequirements_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance, Recipe recipe, bool discover, int qualityLevel, ref bool __result)
-        {
-            if (__result) return;
-            if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-            if (discover) return;
-            if (recipe.m_resources == null) return;
-
-            float radius = MegaQoLPlugin.CraftFromContainersRadius.Value;
-
-            bool allMet = true;
-            foreach (var req in recipe.m_resources)
-            {
-                if (req.m_resItem == null) continue;
-                int needed = req.GetAmount(qualityLevel);
-                if (needed <= 0) continue;
-
-                string itemName = req.m_resItem.m_itemData.m_shared.m_name;
-                int have = ContainerHelper.GetCombinedItemCount(itemName, __instance, radius);
-                if (have < needed) { allMet = false; break; }
-            }
-            __result = allMet;
-        }
-    }
-
-    // Also patch the Piece-based overload used for building
-    [HarmonyPatch(typeof(Player), "HaveRequirements", new Type[] { typeof(Piece), typeof(Player.RequirementMode) })]
-    public static class Player_HaveRequirements_Piece_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance, Piece piece, ref bool __result)
-        {
-            if (__result) return;
-            if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-            if (piece.m_resources == null) return;
-
-            float radius = MegaQoLPlugin.CraftFromContainersRadius.Value;
-
-            bool allMet = true;
-            foreach (var req in piece.m_resources)
-            {
-                if (req.m_resItem == null) continue;
-                int needed = req.GetAmount(0);
-                if (needed <= 0) continue;
-
-                string itemName = req.m_resItem.m_itemData.m_shared.m_name;
-                int have = ContainerHelper.GetCombinedItemCount(itemName, __instance, radius);
-                if (have < needed) { allMet = false; break; }
-            }
-            __result = allMet;
-        }
-    }
-
-    /// <summary>
-    /// When consuming resources for crafting, pull from nearby containers for items
-    /// the player doesn't have enough of in their own inventory.
-    /// </summary>
-    [HarmonyPatch(typeof(Player), "ConsumeResources")]
-    public static class Player_ConsumeResources_Patch
-    {
-        [HarmonyPrefix]
-        public static bool Prefix(Player __instance, Piece.Requirement[] requirements, int qualityLevel, int itemQuality, int multiplier)
-        {
-            if (!MegaQoLPlugin.EnableCraftFromContainers.Value) return true;
-            if (__instance != Player.m_localPlayer) return true;
-
-            var playerInventory = __instance.GetInventory();
-            if (playerInventory == null) return true;
-
-            var nearbyContainers = ContainerHelper.FindNearbyContainers(
-                __instance.transform.position, MegaQoLPlugin.CraftFromContainersRadius.Value);
-
-            // If no nearby containers, let vanilla handle it
-            if (nearbyContainers.Count == 0) return true;
-
-            foreach (var c in nearbyContainers)
-            {
-                if (c == null) continue;
-                var inv = c.GetInventory();
-                if (inv != null) ContainerHelper.EnsureLoaded(c, inv);
-            }
-
-            var affectedContainers = new HashSet<Container>();
-
-            foreach (var req in requirements)
-            {
-                if (req.m_resItem == null) continue;
-                int needed = req.GetAmount(qualityLevel);
-                if (needed <= 0) continue;
-
-                string itemName = req.m_resItem.m_itemData.m_shared.m_name;
-
-                // First consume from player inventory
-                int playerHas = playerInventory.CountItems(itemName);
-                int fromPlayer = Mathf.Min(playerHas, needed);
-                if (fromPlayer > 0)
-                {
-                    playerInventory.RemoveItem(itemName, fromPlayer);
-                    needed -= fromPlayer;
-                }
-
-                // Then consume remainder from nearby containers
-                if (needed > 0)
-                {
-                    foreach (var container in nearbyContainers)
-                    {
-                        if (needed <= 0) break;
-                        if (container == null) continue;
-                        var inv = container.GetInventory();
-                        if (inv == null) continue;
-
-                        int containerHas = inv.CountItems(itemName);
-                        int fromContainer = Mathf.Min(containerHas, needed);
-                        if (fromContainer > 0)
-                        {
-                            inv.RemoveItem(itemName, fromContainer);
-                            needed -= fromContainer;
-                            affectedContainers.Add(container);
-                        }
-                    }
-                }
-            }
-
-            // Play VFX once per affected container
-            foreach (var container in affectedContainers)
-                ChestVFX.Play(container.gameObject);
-
-            // Invalidate material cache since inventory contents changed
-            ContainerHelper.InvalidateMaterialCache();
-
-            // We handled all consumption, skip the original method
-            return false;
         }
     }
 
@@ -2236,473 +1376,6 @@ namespace MegaQoL
 
             if (_timerField != null)
                 _timerField.SetValue(__instance, 999f);
-        }
-    }
-
-    // ==================== MASS HARVEST ====================
-
-    [HarmonyPatch(typeof(Player), "Interact")]
-    public static class Player_Interact_MassHarvest_Patch
-    {
-        private static readonly MethodInfo _extractMethod = AccessTools.Method(typeof(Beehive), "Extract");
-
-        [HarmonyPrefix]
-        public static void Prefix(Player __instance, GameObject go, bool hold, bool alt)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            if (__instance != Player.m_localPlayer) return;
-            if (hold || __instance.InAttack() || __instance.InDodge()) return;
-            if (!Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value)) return;
-
-            var pickable = go.GetComponentInParent<Pickable>();
-            if (pickable != null)
-            {
-                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
-                float radiusSq = radius * radius;
-                Vector3 origin = pickable.transform.position;
-                string targetItem = pickable.m_itemPrefab != null ? pickable.m_itemPrefab.name : null;
-                if (targetItem == null) return;
-
-                int harvested = 0;
-                var allPickables = UnityEngine.Object.FindObjectsOfType<Pickable>();
-                foreach (var other in allPickables)
-                {
-                    if (other == null || other == pickable) continue;
-                    if (other.m_itemPrefab == null || other.m_itemPrefab.name != targetItem) continue;
-                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
-                    other.Interact(__instance, false, alt);
-                    harvested++;
-                }
-                MegaQoLPlugin.Log($"[MassHarvest] Pickable radius={radius} harvested={harvested} item={targetItem}");
-                return;
-            }
-
-            // PickableItem covers gems, coins, amber, ruby etc. (separate class from Pickable)
-            var pickableItem = go.GetComponentInParent<PickableItem>();
-            if (pickableItem != null)
-            {
-                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
-                float radiusSq = radius * radius;
-                Vector3 origin = pickableItem.transform.position;
-                string targetItem = pickableItem.m_itemPrefab != null ? pickableItem.m_itemPrefab.name : null;
-                if (targetItem == null) return;
-
-                int harvested = 0;
-                var allPickableItems = UnityEngine.Object.FindObjectsOfType<PickableItem>();
-                foreach (var other in allPickableItems)
-                {
-                    if (other == null || other == pickableItem) continue;
-                    if (other.m_itemPrefab == null || other.m_itemPrefab.name != targetItem) continue;
-                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
-                    other.Interact(__instance, false, alt);
-                    harvested++;
-                }
-                MegaQoLPlugin.Log($"[MassHarvest] PickableItem radius={radius} harvested={harvested} item={targetItem}");
-                return;
-            }
-
-            var beehive = go.GetComponentInParent<Beehive>();
-            if (beehive != null && _extractMethod != null)
-            {
-                float radius = MegaQoLPlugin.MassHarvestRadius.Value;
-                float radiusSq = radius * radius;
-                Vector3 origin = beehive.transform.position;
-
-                int extracted = 0;
-                var allBeehives = UnityEngine.Object.FindObjectsOfType<Beehive>();
-                foreach (var other in allBeehives)
-                {
-                    if (other == null || other == beehive) continue;
-                    if ((other.transform.position - origin).sqrMagnitude > radiusSq) continue;
-                    if (!PrivateArea.CheckAccess(other.transform.position, 0f, true, false)) continue;
-                    _extractMethod.Invoke(other, null);
-                    extracted++;
-                }
-                MegaQoLPlugin.Log($"[MassHarvest] Beehives: radius={radius} found={allBeehives.Length} extracted={extracted}");
-            }
-        }
-    }
-
-    // ==================== MASS PLANT (GRID PLANTING) ====================
-
-    public static class MassPlantHelper
-    {
-        public static readonly FieldInfo PlacementGhostField = AccessTools.Field(typeof(Player), "m_placementGhost");
-        public static readonly FieldInfo BuildPiecesField = AccessTools.Field(typeof(Player), "m_buildPieces");
-        public static readonly FieldInfo NoPlacementCostField = AccessTools.Field(typeof(Player), "m_noPlacementCost");
-        public static readonly MethodInfo GetRightItemMethod = AccessTools.Method(typeof(Humanoid), "GetRightItem");
-        private static readonly int PlantSpaceMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "piece_nonsolid");
-
-        public static GameObject[] Ghosts = new GameObject[1];
-        public static Piece FakeResourcePiece;
-
-        public static bool PlaceSuccessful;
-        public static Vector3 PlacedPosition;
-        public static Quaternion PlacedRotation;
-        public static Piece PlacedPiece;
-        public static int? SavedRotation;
-
-        public static bool IsHotkeyPressed => Input.GetKey(MegaQoLPlugin.MassFarmingKey.Value);
-
-        public static List<Vector3> BuildGridPositions(Vector3 origin, Plant plant, Quaternion rotation)
-        {
-            float spacing = plant.m_growRadius * 2f;
-            int width = MegaQoLPlugin.PlantGridWidth.Value;
-            int length = MegaQoLPlugin.PlantGridLength.Value;
-
-            var positions = new List<Vector3>(width * length);
-            Vector3 left = rotation * Vector3.left * spacing;
-            Vector3 forward = rotation * Vector3.forward * spacing;
-            Vector3 start = origin - forward * (length / 2) - left * (width / 2);
-
-            for (int i = 0; i < length; i++)
-            {
-                Vector3 pos = start;
-                for (int j = 0; j < width; j++)
-                {
-                    pos.y = ZoneSystem.instance.GetGroundHeight(pos);
-                    positions.Add(pos);
-                    pos += left;
-                }
-                start += forward;
-            }
-            return positions;
-        }
-
-        public static bool HasGrowSpace(Vector3 pos, GameObject go)
-        {
-            var plant = go.GetComponent<Plant>();
-            if (plant != null)
-                return Physics.OverlapSphere(pos, plant.m_growRadius, PlantSpaceMask).Length == 0;
-            return true;
-        }
-
-        public static void DestroyGhosts()
-        {
-            for (int i = 0; i < Ghosts.Length; i++)
-            {
-                if (Ghosts[i] != null)
-                {
-                    UnityEngine.Object.Destroy(Ghosts[i]);
-                    Ghosts[i] = null;
-                }
-            }
-            FakeResourcePiece = null;
-        }
-
-        public static void SetGhostsActive(bool active)
-        {
-            foreach (var g in Ghosts)
-                if (g != null) g.SetActive(active);
-        }
-
-        public static bool EnsureGhosts(Player player)
-        {
-            int count = MegaQoLPlugin.PlantGridWidth.Value * MegaQoLPlugin.PlantGridLength.Value;
-            if (Ghosts[0] == null || Ghosts.Length != count)
-            {
-                DestroyGhosts();
-                if (Ghosts.Length != count)
-                    Ghosts = new GameObject[count];
-
-                var buildPieces = BuildPiecesField.GetValue(player) as PieceTable;
-                if (buildPieces == null) return false;
-
-                var prefab = buildPieces.GetSelectedPrefab();
-                if (prefab == null) return false;
-                if (prefab.GetComponent<Piece>().m_repairPiece) return false;
-
-                for (int i = 0; i < Ghosts.Length; i++)
-                    Ghosts[i] = CreateGhost(prefab);
-            }
-
-            if (FakeResourcePiece == null)
-            {
-                FakeResourcePiece = Ghosts[0].GetComponent<Piece>();
-                FakeResourcePiece.m_dlc = string.Empty;
-                FakeResourcePiece.m_resources = new Piece.Requirement[1] { new Piece.Requirement() };
-            }
-            return true;
-        }
-
-        public static GameObject CreateGhost(GameObject prefab)
-        {
-            ZNetView.m_forceDisableInit = true;
-            var ghost = UnityEngine.Object.Instantiate(prefab);
-            ZNetView.m_forceDisableInit = false;
-            ghost.name = prefab.name;
-
-            foreach (var joint in ghost.GetComponentsInChildren<Joint>())
-                UnityEngine.Object.Destroy(joint);
-            foreach (var rb in ghost.GetComponentsInChildren<Rigidbody>())
-                UnityEngine.Object.Destroy(rb);
-            foreach (var col in ghost.GetComponentsInChildren<Collider>())
-                UnityEngine.Object.Destroy(col);
-
-            int layer = LayerMask.NameToLayer("ghost");
-            foreach (var t in ghost.GetComponentsInChildren<Transform>())
-                t.gameObject.layer = layer;
-
-            foreach (var tm in ghost.GetComponentsInChildren<TerrainModifier>())
-                UnityEngine.Object.Destroy(tm);
-            foreach (var gp in ghost.GetComponentsInChildren<GuidePoint>())
-                UnityEngine.Object.Destroy(gp);
-            foreach (var light in ghost.GetComponentsInChildren<Light>())
-                UnityEngine.Object.Destroy(light);
-
-            var ghostOnly = ghost.transform.Find("_GhostOnly");
-            if (ghostOnly != null)
-                ghostOnly.gameObject.SetActive(true);
-
-            foreach (var renderer in ghost.GetComponentsInChildren<MeshRenderer>())
-            {
-                if (renderer.sharedMaterial == null) continue;
-                var mats = renderer.sharedMaterials;
-                for (int m = 0; m < mats.Length; m++)
-                {
-                    mats[m] = new Material(mats[m]);
-                    mats[m].SetFloat("_RippleDistance", 0f);
-                    mats[m].SetFloat("_ValueNoise", 0f);
-                }
-                renderer.sharedMaterials = mats;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            }
-            return ghost;
-        }
-
-        /// <summary>
-        /// Finds the HaveRequirements(Piece, RequirementMode) overload via reflection
-        /// to avoid enum type name issues across Valheim versions.
-        /// </summary>
-        private static MethodInfo _haveReqPieceMethod;
-        private static bool _haveReqSearched;
-
-        public static bool PlayerHaveRequirements(Player player, Piece piece)
-        {
-            if (!_haveReqSearched)
-            {
-                _haveReqSearched = true;
-                foreach (var m in typeof(Player).GetMethods(BindingFlags.Public | BindingFlags.Instance))
-                {
-                    if (m.Name != "HaveRequirements") continue;
-                    var ps = m.GetParameters();
-                    if (ps.Length == 2 && ps[0].ParameterType == typeof(Piece))
-                    {
-                        _haveReqPieceMethod = m;
-                        break;
-                    }
-                }
-            }
-            if (_haveReqPieceMethod != null)
-            {
-                var reqModeType = _haveReqPieceMethod.GetParameters()[1].ParameterType;
-                var zeroVal = Enum.ToObject(reqModeType, 0); // 0 = CanBuild
-                return (bool)_haveReqPieceMethod.Invoke(player, new object[] { piece, zeroVal });
-            }
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), "TryPlacePiece")]
-    public static class MassPlant_TryPlacePiece_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            if (MassPlantHelper.IsHotkeyPressed && !MassPlantHelper.SavedRotation.HasValue)
-                MassPlantHelper.SavedRotation = ___m_placeRotation;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance, ref bool __result, Piece piece, ref int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            MassPlantHelper.PlaceSuccessful = __result;
-            if (__result)
-            {
-                var ghost = MassPlantHelper.PlacementGhostField.GetValue(__instance) as GameObject;
-                if (ghost != null)
-                {
-                    MassPlantHelper.PlacedPosition = ghost.transform.position;
-                    MassPlantHelper.PlacedRotation = ghost.transform.rotation;
-                }
-                MassPlantHelper.PlacedPiece = piece;
-            }
-            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
-                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), "UpdatePlacement")]
-    public static class MassPlant_UpdatePlacement_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(ref int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            MassPlantHelper.PlaceSuccessful = false;
-            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
-                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance, int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            if (MassPlantHelper.IsHotkeyPressed)
-                MassPlantHelper.SavedRotation = ___m_placeRotation;
-
-            if (!MassPlantHelper.PlaceSuccessful) return;
-
-            var plant = MassPlantHelper.PlacedPiece?.gameObject.GetComponent<Plant>();
-            if (plant == null || !MassPlantHelper.IsHotkeyPressed) return;
-
-            var heightmap = Heightmap.FindHeightmap(MassPlantHelper.PlacedPosition);
-            if (heightmap == null) return;
-
-            var positions = MassPlantHelper.BuildGridPositions(
-                MassPlantHelper.PlacedPosition, plant, MassPlantHelper.PlacedRotation);
-
-            foreach (var pos in positions)
-            {
-                if (pos == MassPlantHelper.PlacedPosition) continue;
-                if (MassPlantHelper.PlacedPiece.m_cultivatedGroundOnly && !heightmap.IsCultivated(pos)) continue;
-
-                var rightItem = MassPlantHelper.GetRightItemMethod.Invoke(__instance, null) as ItemDrop.ItemData;
-                if (rightItem == null) continue;
-
-                if (!MegaQoLPlugin.GridIgnoreStamina.Value && !__instance.HaveStamina(rightItem.m_shared.m_attack.m_attackStamina))
-                {
-                    Hud.instance.StaminaBarUppgradeFlash();
-                    break;
-                }
-
-                bool noCost = (bool)MassPlantHelper.NoPlacementCostField.GetValue(__instance);
-                if (!noCost && !MassPlantHelper.PlayerHaveRequirements(__instance, MassPlantHelper.PlacedPiece))
-                    break;
-
-                if (!MassPlantHelper.HasGrowSpace(pos, MassPlantHelper.PlacedPiece.gameObject)) continue;
-
-                var obj = UnityEngine.Object.Instantiate(MassPlantHelper.PlacedPiece.gameObject, pos, MassPlantHelper.PlacedRotation);
-                var piece = obj.GetComponent<Piece>();
-                if (piece != null) piece.SetCreator(__instance.GetPlayerID());
-
-                MassPlantHelper.PlacedPiece.m_placeEffect.Create(pos, MassPlantHelper.PlacedRotation, obj.transform, 1f, -1);
-                Game.instance.IncrementPlayerStat((PlayerStatType)2, 1f);
-                __instance.ConsumeResources(MassPlantHelper.PlacedPiece.m_resources, 0, -1);
-
-                if (!MegaQoLPlugin.GridIgnoreStamina.Value)
-                    __instance.UseStamina(rightItem.m_shared.m_attack.m_attackStamina);
-
-                if (!MegaQoLPlugin.GridIgnoreDurability.Value && rightItem.m_shared.m_useDurability)
-                {
-                    rightItem.m_durability -= rightItem.m_shared.m_useDurabilityDrain;
-                    if (rightItem.m_durability <= 0f) break;
-                }
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), "SetupPlacementGhost")]
-    public static class MassPlant_SetupPlacementGhost_Patch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            if (MassPlantHelper.IsHotkeyPressed && !MassPlantHelper.SavedRotation.HasValue)
-                MassPlantHelper.SavedRotation = ___m_placeRotation;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(ref int ___m_placeRotation)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-            if (MassPlantHelper.IsHotkeyPressed && MassPlantHelper.SavedRotation.HasValue)
-                ___m_placeRotation = MassPlantHelper.SavedRotation.Value;
-            MassPlantHelper.DestroyGhosts();
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), "UpdatePlacementGhost")]
-    public static class MassPlant_UpdatePlacementGhost_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Player __instance)
-        {
-            if (!MegaQoLPlugin.EnableMassFarming.Value) return;
-
-            var mainGhost = MassPlantHelper.PlacementGhostField.GetValue(__instance) as GameObject;
-            if (mainGhost == null || !mainGhost.activeSelf || !MassPlantHelper.IsHotkeyPressed)
-            {
-                MassPlantHelper.SetGhostsActive(false);
-                return;
-            }
-
-            var plant = mainGhost.GetComponent<Plant>();
-            if (plant == null)
-            {
-                MassPlantHelper.SetGhostsActive(false);
-                return;
-            }
-
-            if (!MassPlantHelper.EnsureGhosts(__instance))
-            {
-                MassPlantHelper.SetGhostsActive(false);
-                return;
-            }
-
-            // Find the primary resource requirement
-            Piece.Requirement primaryReq = null;
-            foreach (var r in mainGhost.GetComponent<Piece>().m_resources)
-            {
-                if (r.m_resItem != null && r.m_amount > 0) { primaryReq = r; break; }
-            }
-            if (primaryReq == null) return;
-
-            MassPlantHelper.FakeResourcePiece.m_resources[0].m_resItem = primaryReq.m_resItem;
-            MassPlantHelper.FakeResourcePiece.m_resources[0].m_amount = primaryReq.m_amount;
-
-            float stamina = __instance.GetStamina();
-            var rightItem = MassPlantHelper.GetRightItemMethod.Invoke(__instance, null) as ItemDrop.ItemData;
-            if (rightItem == null) return;
-
-            var heightmap = Heightmap.FindHeightmap(mainGhost.transform.position);
-            var positions = MassPlantHelper.BuildGridPositions(mainGhost.transform.position, plant, mainGhost.transform.rotation);
-
-            for (int i = 0; i < MassPlantHelper.Ghosts.Length && i < positions.Count; i++)
-            {
-                Vector3 pos = positions[i];
-
-                if (mainGhost.transform.position == pos)
-                {
-                    MassPlantHelper.Ghosts[i].SetActive(false);
-                    continue;
-                }
-
-                MassPlantHelper.FakeResourcePiece.m_resources[0].m_amount += primaryReq.m_amount;
-                MassPlantHelper.Ghosts[i].transform.position = pos;
-                MassPlantHelper.Ghosts[i].transform.rotation = mainGhost.transform.rotation;
-                MassPlantHelper.Ghosts[i].SetActive(true);
-
-                bool invalid = false;
-                if (mainGhost.GetComponent<Piece>().m_cultivatedGroundOnly && heightmap != null && !heightmap.IsCultivated(pos))
-                    invalid = true;
-                else if (!MassPlantHelper.HasGrowSpace(pos, mainGhost))
-                    invalid = true;
-                else if (!MegaQoLPlugin.GridIgnoreStamina.Value && stamina < rightItem.m_shared.m_attack.m_attackStamina)
-                    invalid = true;
-                else
-                {
-                    bool noCost = (bool)MassPlantHelper.NoPlacementCostField.GetValue(__instance);
-                    if (!noCost && !MassPlantHelper.PlayerHaveRequirements(__instance, MassPlantHelper.FakeResourcePiece))
-                        invalid = true;
-                }
-
-                stamina -= rightItem.m_shared.m_attack.m_attackStamina;
-                MassPlantHelper.Ghosts[i].GetComponent<Piece>().SetInvalidPlacementHeightlight(invalid);
-            }
         }
     }
 
