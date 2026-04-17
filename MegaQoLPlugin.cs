@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.11.0";
+        public const string PluginVersion = "1.11.1";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -80,7 +80,6 @@ namespace MegaQoL
         private void Awake()
         {
             _logger = Logger;
-            _logger.LogInfo($"{PluginName} v{PluginVersion} is loading...");
 
             MigrateConfig(Config.ConfigFilePath);
             Config.Reload();
@@ -170,8 +169,8 @@ namespace MegaQoL
             _harmony = new Harmony(PluginGUID);
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
 
-            _logger.LogInfo($"{PluginName} loaded successfully!");
-            _logger.LogInfo($"Live config reloading enabled - edit {Config.ConfigFilePath} and save to apply changes!");
+            _logger.LogInfo($"{PluginName} v{PluginVersion} loaded!");
+            Log($"Live config reloading enabled - edit {Config.ConfigFilePath} and save to apply changes!");
         }
 
         private static void MigrateConfig(string configPath)
@@ -280,7 +279,7 @@ namespace MegaQoL
             _configWatcher.SynchronizingObject = null;
             _configWatcher.EnableRaisingEvents = true;
 
-            _logger.LogInfo($"Config watcher started for: {configFile}");
+            Log($"Config watcher started for: {configFile}");
         }
 
         private static void OnConfigChanged(object sender, FileSystemEventArgs e)
@@ -289,7 +288,7 @@ namespace MegaQoL
             {
                 System.Threading.Thread.Sleep(100);
                 _config.Reload();
-                _logger.LogInfo("Config reloaded! Changes applied.");
+                Log("Config reloaded! Changes applied.");
                 float _velMult = BallistaVelocityMultiplier.Value;
                 float _aimAcc = BallistaAimAccuracy.Value;
                 float _vanPred = Turret_Awake_Patch.VanillaPredictionModifier / _velMult;
