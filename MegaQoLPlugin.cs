@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.11.1";
+        public const string PluginVersion = "1.11.2";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -1527,4 +1527,112 @@ namespace MegaQoL
         }
     }
 
+    // ==================== ZNetScene NRE-Trap (always on) ====================
+    //
+    // Vanilla ZNetScene.RemoveObjects can NRE every frame when m_instances has a
+    // null/destroyed ZNetView entry — typically left there by another mod that
+    // Object.Destroy'd a ZNetView without removing its dictionary entry. The NRE
+    // breaks the cleanup pass, which makes gameplay glitchy (dungeon objects
+    // persist after teleport, lighting/audio desync, etc).
+    //
+    // This finalizer catches the NRE, sweeps m_instances for null/destroyed
+    // entries, logs the offender (throttled), removes them, and swallows the
+    // exception so Update() keeps ticking. Always-on — only does work if the
+    // NRE actually fires.
+    [HarmonyPatch(typeof(ZNetScene), "RemoveObjects")]
+    public static class ZNetScene_RemoveObjects_NRETrap
+    {
+        private static int _sweepCount;
+        private static int _logCount;
+        private const int LogLimit = 25;
+
+        // ZNetScene's per-instance ZDO→ZNetView map is private; resolve via reflection
+        // once and cache. Field name is stable across recent Valheim versions.
+        private static FieldInfo _instancesField;
+        private static FieldInfo InstancesField =>
+            _instancesField ??= AccessTools.Field(typeof(ZNetScene), "m_instances");
+
+        [HarmonyFinalizer]
+        static Exception Finalizer(ZNetScene __instance, Exception __exception)
+        {
+            if (__exception == null) return null;
+            if (!(__exception is NullReferenceException)) return __exception;
+
+            try
+            {
+                int removed = SweepNullEntries(__instance);
+                _sweepCount++;
+                if (_logCount < LogLimit)
+                {
+                    _logCount++;
+                    MegaQoLPlugin._logger.LogError(
+                        $"[ZNetScene-NRETrap] Caught NRE in RemoveObjects (sweep #{_sweepCount}); cleared {removed} dud entries from m_instances." +
+                        (_logCount == LogLimit ? $" (Throttled — further sweep notices suppressed this session.)" : string.Empty));
+                }
+            }
+            catch (Exception sweepErr)
+            {
+                MegaQoLPlugin._logger.LogError($"[ZNetScene-NRETrap] sweep failed: {sweepErr}");
+            }
+            return null;
+        }
+
+        private static int SweepNullEntries(ZNetScene zns)
+        {
+            var field = InstancesField;
+            if (field == null) return 0;
+
+            var dict = field.GetValue(zns) as IDictionary<ZDO, ZNetView>;
+            if (dict == null) return 0;
+
+            var removeKeys = new List<ZDO>();
+            foreach (var kv in dict)
+            {
+                var view = kv.Value;
+                if (view == null)
+                {
+                    removeKeys.Add(kv.Key);
+                    LogOffender(zns, kv.Key, viewName: "<null ZNetView>");
+                    continue;
+                }
+                if (view.gameObject == null)
+                {
+                    removeKeys.Add(kv.Key);
+                    LogOffender(zns, kv.Key, viewName: $"<destroyed gameObject> (view='{SafeName(view)}')");
+                    continue;
+                }
+            }
+            foreach (var k in removeKeys) dict.Remove(k);
+            return removeKeys.Count;
+        }
+
+        private static void LogOffender(ZNetScene zns, ZDO zdo, string viewName)
+        {
+            if (_logCount >= LogLimit) return;
+            _logCount++;
+
+            string zdoUid = zdo != null ? zdo.m_uid.ToString() : "<null ZDO>";
+            int prefabHash = 0;
+            string prefabName = "<unresolved>";
+            try
+            {
+                if (zdo != null) prefabHash = zdo.GetPrefab();
+                if (prefabHash != 0)
+                {
+                    var prefabGo = zns?.GetPrefab(prefabHash);
+                    if (prefabGo != null) prefabName = prefabGo.name;
+                    else prefabName = $"<unknown hash={prefabHash}>";
+                }
+            }
+            catch { /* best-effort identification */ }
+
+            MegaQoLPlugin._logger.LogError(
+                $"[ZNetScene-NRETrap]   dud entry: zdoUid={zdoUid} prefab='{prefabName}' state={viewName}");
+        }
+
+        private static string SafeName(UnityEngine.Object obj)
+        {
+            try { return obj != null ? obj.name : "<null>"; } catch { return "<exception>"; }
+        }
+    }
 }
