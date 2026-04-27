@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.12.0";
+        public const string PluginVersion = "1.13.0";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -49,12 +49,6 @@ namespace MegaQoL
 
         // Map Teleport
         public static ConfigEntry<bool> EnableMapTeleport;
-
-        // Build Dust Removal
-        public static ConfigEntry<bool> EnableNoBuildDust;
-
-        // Rune Build (bypass no-build zones)
-        public static ConfigEntry<bool> EnableRuneBuild;
 
         // No Mist
         public static ConfigEntry<bool> EnableNoMist;
@@ -131,23 +125,16 @@ namespace MegaQoL
             AOEMiningKey = Config.Bind("5. Instant Mining", "Hotkey", KeyCode.LeftShift,
                 "Hold this key while pickaxing to instant-mine the target");
 
-            // 7. Build Dust Removal
-            EnableNoBuildDust = Config.Bind("6. Build Dust Removal", "Enable", true,
-                "Removes dust/particle effects when placing build pieces (keeps sound effects)");
-
-            // 8. Rune Build
-            EnableRuneBuild = Config.Bind("7. Rune Build", "Enable", true,
-                "Bypass the 'mystical force' no-build restriction near starting runestones and other no-build locations");
-
-            // 9. Map Teleport
+            // 8. Map Teleport (sections 6 and 7 — Build Dust Removal & Rune Build —
+            // moved to MegaBuilder v1.5.0+; their orphan cfg blocks are auto-pruned).
             EnableMapTeleport = Config.Bind("8. Map Teleport", "Enable", true,
                 "Enables map teleportation - middle-click on map to teleport to that location");
 
-            // 10. No Mist
+            // 9. No Mist
             EnableNoMist = Config.Bind("9. No Mist", "Enable", true,
                 "Removes all mist particle effects (Mistlands fog, swamp mist, etc)");
 
-            // 11. MessageHud Smart Queue
+            // 10. MessageHud Smart Queue
             EnableMessageHudQueue = Config.Bind("10. MessageHud Smart Queue", "Enable", true,
                 "Enables smart message queue - clears stale messages so the latest one shows immediately");
 
@@ -1176,62 +1163,7 @@ namespace MegaQoL
         }
     }
 
-    // ==================== REMOVE BUILD DUST EFFECT ====================
-
-    [HarmonyPatch(typeof(Player), "PlacePiece")]
-    [HarmonyPatch(new Type[] { typeof(Piece), typeof(Vector3), typeof(Quaternion), typeof(bool) })]
-    public static class Player_PlacePiece_NoDustPatch
-    {
-        private static FieldInfo _placeEffectField = typeof(Piece).GetField("m_placeEffect", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        private static EffectList _dust_originalEffect;
-        private static bool _dust_applied;
-
-        [HarmonyPrefix]
-        public static void Prefix(Piece piece, Vector3 pos, Quaternion rot, bool doAttack)
-        {
-            if (!MegaQoLPlugin.EnableNoBuildDust.Value) return;
-            _dust_applied = false;
-            if (_placeEffectField == null || piece == null) return;
-            _dust_originalEffect = (EffectList)_placeEffectField.GetValue(piece);
-            if (_dust_originalEffect == null || _dust_originalEffect.m_effectPrefabs == null) return;
-
-            var soundOnly = new List<EffectList.EffectData>();
-            foreach (var e in _dust_originalEffect.m_effectPrefabs)
-            {
-                if (e.m_prefab == null) continue;
-                bool hasAudio = e.m_prefab.GetComponent<AudioSource>() != null || e.m_prefab.GetComponent<ZSFX>() != null;
-                bool hasParticles = e.m_prefab.GetComponent<ParticleSystem>() != null || e.m_prefab.GetComponentInChildren<ParticleSystem>() != null;
-                if (hasAudio && !hasParticles)
-                    soundOnly.Add(e);
-            }
-
-            var filtered = new EffectList { m_effectPrefabs = soundOnly.ToArray() };
-            _placeEffectField.SetValue(piece, filtered);
-            _dust_applied = true;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(Piece piece, Vector3 pos, Quaternion rot, bool doAttack)
-        {
-            if (!_dust_applied || _placeEffectField == null || piece == null) return;
-            _placeEffectField.SetValue(piece, _dust_originalEffect);
-            _dust_applied = false;
-        }
-    }
-
-    // ==================== RUNE BUILD (BYPASS NO-BUILD ZONES) ====================
-
-    [HarmonyPatch(typeof(Location), "IsInsideNoBuildLocation")]
-    public static class Location_IsInsideNoBuildLocation_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(ref bool __result)
-        {
-            if (!__result) return;
-            if (!MegaQoLPlugin.EnableRuneBuild.Value) return;
-            __result = false;
-        }
-    }
+    // (Build Dust Removal & Rune Build patches moved to MegaBuilder v1.5.0+)
 
     // ==================== NO MIST ====================
 
