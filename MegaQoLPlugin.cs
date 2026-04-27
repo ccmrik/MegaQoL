@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.11.2";
+        public const string PluginVersion = "1.11.3";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -164,6 +164,14 @@ namespace MegaQoL
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
+
+            // Sweep orphan sections/keys left behind by previous versions (Item Management,
+            // Pet Feeder, Craft from Containers, Mass Farming, Build Dust Removal, etc.
+            // — all extracted into MegaStuff/MegaFarming over v1.7+ but left behind in user
+            // cfgs). Runs AFTER all Bind() calls so the snapshot is complete, BEFORE the
+            // watcher attaches so we don't trigger a phantom Reload.
+            ConfigPruner.Prune(_config, _logger);
+
             SetupConfigWatcher();
 
             _harmony = new Harmony(PluginGUID);
@@ -1633,6 +1641,124 @@ namespace MegaQoL
         private static string SafeName(UnityEngine.Object obj)
         {
             try { return obj != null ? obj.name : "<null>"; } catch { return "<exception>"; }
+        }
+    }
+
+    // ==================== CONFIG PRUNER (orphan section/key sweeper) ====================
+
+    /// <summary>
+    /// Removes sections and keys from the on-disk cfg that aren't bound to any
+    /// `ConfigEntry` on the supplied `ConfigFile`. Run AFTER every `Bind()` call
+    /// completes — that's when `cfg.Keys` is the full snapshot of the mod's
+    /// current surface area.
+    ///
+    /// Why: BepInEx's cfg writer never deletes orphan content. When a key is
+    /// renamed, a section reorganised, or a feature extracted into a different
+    /// mod, the old text persists forever and profiles snowball across versions.
+    /// </summary>
+    public static class ConfigPruner
+    {
+        public static int Prune(ConfigFile cfg, ManualLogSource log = null)
+        {
+            if (cfg == null) return 0;
+            string path = cfg.ConfigFilePath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return 0;
+
+            var bound = new HashSet<string>(StringComparer.Ordinal);
+            var boundSections = new HashSet<string>(StringComparer.Ordinal);
+            try
+            {
+                foreach (var def in cfg.Keys)
+                {
+                    bound.Add(def.Section + "\0" + def.Key);
+                    boundSections.Add(def.Section);
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.LogWarning($"[ConfigPruner] Couldn't enumerate bound entries: {ex.Message}");
+                return 0;
+            }
+            if (boundSections.Count == 0) return 0;
+
+            string[] inLines;
+            try { inLines = File.ReadAllLines(path); }
+            catch (Exception ex)
+            {
+                log?.LogWarning($"[ConfigPruner] Read failed: {ex.Message}");
+                return 0;
+            }
+
+            var outLines = new List<string>(inLines.Length);
+            string currentSection = null;
+            bool currentSectionKeep = true;
+            int droppedSections = 0, droppedKeys = 0;
+
+            for (int i = 0; i < inLines.Length; i++)
+            {
+                var line = inLines[i];
+                var trimmed = line.Trim();
+
+                if (trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[trimmed.Length - 1] == ']')
+                {
+                    currentSection = trimmed.Substring(1, trimmed.Length - 2).Trim();
+                    currentSectionKeep = boundSections.Contains(currentSection);
+                    if (!currentSectionKeep)
+                    {
+                        droppedSections++;
+                        TrimTrailingBlanksAndComments(outLines);
+                        continue;
+                    }
+                    outLines.Add(line);
+                    continue;
+                }
+
+                if (!currentSectionKeep) continue;
+
+                int eq = trimmed.IndexOf('=');
+                bool isKeyLine = eq > 0 && trimmed[0] != '#' && trimmed[0] != ';';
+                if (isKeyLine && currentSection != null)
+                {
+                    string key = trimmed.Substring(0, eq).Trim();
+                    if (!bound.Contains(currentSection + "\0" + key))
+                    {
+                        droppedKeys++;
+                        TrimTrailingBlanksAndComments(outLines);
+                        continue;
+                    }
+                }
+                outLines.Add(line);
+            }
+
+            if (droppedSections == 0 && droppedKeys == 0) return 0;
+
+            while (outLines.Count > 0 && outLines[outLines.Count - 1].Trim().Length == 0)
+                outLines.RemoveAt(outLines.Count - 1);
+            outLines.Add(string.Empty);
+
+            try
+            {
+                File.WriteAllLines(path, outLines);
+                log?.LogInfo($"[ConfigPruner] {Path.GetFileName(path)}: dropped {droppedSections} orphan section(s), {droppedKeys} orphan key(s)");
+            }
+            catch (Exception ex)
+            {
+                log?.LogWarning($"[ConfigPruner] Write failed: {ex.Message}");
+                return 0;
+            }
+            return droppedSections + droppedKeys;
+        }
+
+        private static void TrimTrailingBlanksAndComments(List<string> lines)
+        {
+            while (lines.Count > 0)
+            {
+                var last = lines[lines.Count - 1].TrimStart();
+                if (last.Length == 0 || last[0] == '#' || last[0] == ';')
+                    lines.RemoveAt(lines.Count - 1);
+                else
+                    break;
+            }
         }
     }
 }
