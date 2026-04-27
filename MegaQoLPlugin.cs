@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.11.3";
+        public const string PluginVersion = "1.12.0";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -49,9 +49,6 @@ namespace MegaQoL
 
         // Map Teleport
         public static ConfigEntry<bool> EnableMapTeleport;
-
-        // Plant Anywhere
-        public static ConfigEntry<bool> EnablePlantAnywhere;
 
         // Build Dust Removal
         public static ConfigEntry<bool> EnableNoBuildDust;
@@ -127,11 +124,6 @@ namespace MegaQoL
                 new ConfigDescription("Turret rotation speed deg/sec (higher = faster tracking, vanilla = 45)", new AcceptableValueRange<float>(45f, 500f)));
             BallistaRange = Config.Bind("3. Ballista", "Range", 30f,
                 new ConfigDescription("Targeting range in meters (vanilla = 30)", new AcceptableValueRange<float>(30f, 200f)));
-
-            // 4. Plant Anywhere
-            // (sections renumbered after MegaStuff extraction)
-            EnablePlantAnywhere = Config.Bind("4. Plant Anywhere", "Enable", true,
-                "Enables planting crops in any biome (removes biome restrictions for non-tree plantables)");
 
             // 6. Instant Mining
             EnableAOEMining = Config.Bind("5. Instant Mining", "Enable", true,
@@ -1181,58 +1173,6 @@ namespace MegaQoL
             // Fallback: just apply velocity multiplier with barrel direction
             Vector3 fallbackDir = __instance.m_eye.transform.forward;
             _projVelField.SetValue(projectile, fallbackDir * finalSpeed);
-        }
-    }
-
-    // ==================== PLANT ANYWHERE ====================
-
-    public static class PlantAnywhereHelper
-    {
-        private static readonly string[] TreeKeywords = new string[]
-        {
-            "beech", "birch", "oak", "fir", "pine", "tree", "ygg", "ancient"
-        };
-
-        public static bool IsCropPlant(GameObject obj)
-        {
-            if (obj == null) return false;
-            string name = obj.name.ToLower();
-            foreach (var keyword in TreeKeywords)
-                if (name.Contains(keyword)) return false;
-            return true;
-        }
-    }
-
-    [HarmonyPatch(typeof(Plant), "Awake")]
-    public static class Plant_Awake_PlantAnywhere_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Plant __instance)
-        {
-            if (!MegaQoLPlugin.EnablePlantAnywhere.Value) return;
-            if (!PlantAnywhereHelper.IsCropPlant(__instance.gameObject)) return;
-            __instance.m_biome = Heightmap.Biome.All;
-        }
-    }
-
-    [HarmonyPatch(typeof(Player), "UpdatePlacementGhost")]
-    public static class Player_UpdatePlacementGhost_PlantAnywhere_Patch
-    {
-        private static readonly FieldInfo _placementGhostField = typeof(Player).GetField("m_placementGhost", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        [HarmonyPrefix]
-        public static void Prefix(Player __instance)
-        {
-            if (!MegaQoLPlugin.EnablePlantAnywhere.Value) return;
-            if (_placementGhostField == null) return;
-            var ghost = _placementGhostField.GetValue(__instance) as GameObject;
-            if (ghost == null) return;
-            var plant = ghost.GetComponent<Plant>();
-            if (plant == null) return;
-            if (!PlantAnywhereHelper.IsCropPlant(ghost)) return;
-            var piece = ghost.GetComponent<Piece>();
-            if (piece != null)
-                piece.m_onlyInBiome = Heightmap.Biome.None;
         }
     }
 
