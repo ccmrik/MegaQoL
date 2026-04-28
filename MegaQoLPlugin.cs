@@ -15,7 +15,7 @@ namespace MegaQoL
     {
         public const string PluginGUID = "com.rik.megaqol";
         public const string PluginName = "Mega QoL";
-        public const string PluginVersion = "1.13.0";
+        public const string PluginVersion = "1.14.0";
 
         internal static ManualLogSource _logger;
         private static Harmony _harmony;
@@ -49,6 +49,10 @@ namespace MegaQoL
 
         // Map Teleport
         public static ConfigEntry<bool> EnableMapTeleport;
+
+        // Quicker Portals
+        public static ConfigEntry<bool> EnableQuickerPortals;
+        public static ConfigEntry<float> QuickerPortalsMultiplier;
 
         // No Mist
         public static ConfigEntry<bool> EnableNoMist;
@@ -129,6 +133,12 @@ namespace MegaQoL
             // moved to MegaBuilder v1.5.0+; their orphan cfg blocks are auto-pruned).
             EnableMapTeleport = Config.Bind("8. Map Teleport", "Enable", true,
                 "Enables map teleportation - middle-click on map to teleport to that location");
+
+            // 8b. Quicker Portals — speed up the teleport sequence so portals finish far faster
+            EnableQuickerPortals = Config.Bind("8b. Quicker Portals", "Enable", true,
+                "Speed up portal/teleport timing — slashes the artificial wait so you arrive much faster (still respects the area-load gate)");
+            QuickerPortalsMultiplier = Config.Bind("8b. Quicker Portals", "SpeedMultiplier", 5f,
+                new ConfigDescription("Multiplier on teleport time-step (1 = vanilla, 5 = 5x faster, capped to keep timeout headroom)", new AcceptableValueRange<float>(1f, 10f)));
 
             // 9. No Mist
             EnableNoMist = Config.Bind("9. No Mist", "Enable", true,
@@ -778,6 +788,46 @@ namespace MegaQoL
                 player.Message(MessageHud.MessageType.Center, "Teleported!");
             }
             catch (Exception ex) { MegaQoLPlugin._logger?.LogDebug($"[MegaQoL] {ex.Message}"); }
+        }
+    }
+
+    // ==================== QUICKER PORTALS ====================
+    //
+    // Player.UpdateTeleport advances m_teleportTimer with the supplied dt and gates
+    // the actual position move on (a) area-ready for distant teleports and (b) a
+    // small artificial wait so the fade animation can play. Multiplying dt fast-
+    // forwards the artificial wait without skipping the area-ready guard, which is
+    // the safe knob — straight-up bypassing the load wait drops the player into
+    // un-streamed terrain. We cap the boosted dt so the cumulative timer can't
+    // exceed ~7.5s (vanilla 8s timeout) and trip a phantom abort.
+    [HarmonyPatch(typeof(Player), "UpdateTeleport")]
+    public static class Player_UpdateTeleport_QuickerPortals_Patch
+    {
+        private static readonly FieldInfo TimerField = AccessTools.Field(typeof(Player), "m_teleportTimer");
+        private static readonly FieldInfo TeleportingField = AccessTools.Field(typeof(Player), "m_teleporting");
+
+        [HarmonyPrefix]
+        public static void Prefix(Player __instance, ref float dt)
+        {
+            if (!MegaQoLPlugin.EnableQuickerPortals.Value) return;
+            if (__instance == null || __instance != Player.m_localPlayer) return;
+            if (TeleportingField == null) return;
+
+            bool isTeleporting = (bool)TeleportingField.GetValue(__instance);
+            if (!isTeleporting) return;
+
+            float mult = MegaQoLPlugin.QuickerPortalsMultiplier.Value;
+            if (mult <= 1f) return;
+
+            float boosted = dt * mult;
+            if (TimerField != null)
+            {
+                float curTimer = (float)TimerField.GetValue(__instance);
+                float maxAdvance = 7.5f - curTimer;
+                if (maxAdvance <= 0f) return;          // timeout window almost gone — leave dt alone
+                if (boosted > maxAdvance) boosted = maxAdvance;
+            }
+            dt = boosted;
         }
     }
 
